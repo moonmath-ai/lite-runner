@@ -157,6 +157,7 @@ class Runner:
             project=project,
             name=run_name,
             tags=run_tags,
+            save_code=True,
             config={
                 **{f"param/{k}": v for k, v in resolved.items() if not k.startswith("_")},
                 **{f"git/{k}": v for k, v in git_info.items()},
@@ -171,6 +172,9 @@ class Runner:
         dir_name = wb_run.name or wb_run.id or "run"
         output_dir = Path.home() / "genai_runs" / project / f"{timestamp}_{dir_name}"
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save code snapshot (git archive + dirty diff)
+        _save_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in fixed-value params
         param_values = self._interpolate_output(resolved, output_dir)
@@ -536,3 +540,42 @@ def _collect_git_info() -> dict:
         }
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {}
+
+
+def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict):
+    """Save a full code snapshot: git archive + dirty diff."""
+    if not git_info:
+        return
+
+    code_dir = output_dir / "code"
+    code_dir.mkdir(exist_ok=True)
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", *args], capture_output=True, timeout=30,
+        )
+
+    # git archive: full snapshot of tracked files at HEAD
+    archive_path = code_dir / "source.tar.gz"
+    result = git("archive", "--format=tar.gz", "-o", str(archive_path), "HEAD")
+    if result.returncode != 0:
+        print(f"[genai_runner] Warning: git archive failed: {result.stderr.decode()}")
+        return
+
+    # Dirty diff (staged + unstaged vs HEAD)
+    diff_path = None
+    if git_info.get("dirty"):
+        diff_result = git("diff", "HEAD")
+        if diff_result.returncode == 0 and diff_result.stdout:
+            diff_path = code_dir / "dirty.patch"
+            diff_path.write_bytes(diff_result.stdout)
+
+    # Upload as W&B artifact
+    try:
+        artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
+        artifact.add_file(str(archive_path))
+        if diff_path and diff_path.exists():
+            artifact.add_file(str(diff_path))
+        wb_run.log_artifact(artifact)
+    except Exception as e:
+        print(f"[genai_runner] Warning: failed to upload code snapshot: {e}")
