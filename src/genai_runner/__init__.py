@@ -718,7 +718,7 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
     parts = Path(path_str).parts
     for i, part in enumerate(parts):
         if any(c in part for c in ("*", "?", "[")):
-            base = Path(*parts[:i]) if i > 0 else Path(".")
+            base = Path(*parts[:i]) if i > 0 else Path()
             pattern = str(Path(*parts[i:]))
             return base, pattern
     # No glob chars found (shouldn't happen if caller checked)
