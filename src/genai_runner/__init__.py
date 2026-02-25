@@ -279,31 +279,31 @@ class Runner:
         # Execute
         exit_code, duration, stdout_text = self._execute(cmd, output_dir)
 
-        # Extract metrics from stdout
-        self._extract_metrics(wb_run, stdout_text)
-
-        # Log output files (log_when == "after")
-        self._log_files(wb_run, param_values, when="after")
-
-        # Log uncontrolled outputs + run logs
-        self._log_extra_outputs(wb_run, output_dir)
-        self._log_run_logs(wb_run, output_dir)
-
-        # Finalize
+        # --- Post-run: never raise, always try to finish W&B run ---
         status = "failed" if exit_code != 0 else "success"
-        if exit_code != 0:
-            wb_run.tags = [*run_tags, "failed"]
-        wb_run.summary.update(
-            {
+
+        for step_name, step in [
+            ("extract metrics", lambda: self._extract_metrics(wb_run, stdout_text)),
+            ("log output files", lambda: self._log_files(wb_run, param_values, when="after")),  # noqa: E501
+            ("log extra outputs", lambda: self._log_extra_outputs(wb_run, output_dir)),
+            ("log run logs", lambda: self._log_run_logs(wb_run, output_dir)),
+        ]:
+            try:
+                step()
+            except Exception as e:  # noqa: BLE001
+                print(f"[genai_runner] Warning: {step_name} failed: {e}")
+
+        _try_update_summary(
+            wb_run,
+            run_tags=run_tags,
+            summary={
                 "exit_code": exit_code,
                 "duration_seconds": duration,
                 "status": status,
-                "num_videos": self._count_logged("video"),
-                "num_images": self._count_logged("image"),
                 "output_dir": str(output_dir),
-            }
+            },
         )
-        wb_run.finish(exit_code=exit_code)
+        _try_finish(wb_run, exit_code)
 
         print("=" * 60)
         print(f"Status: {status} (exit code {exit_code})")
@@ -855,3 +855,26 @@ def _save_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> Non
         wb_run.log_artifact(artifact)
     except Exception as e:  # noqa: BLE001
         print(f"[genai_runner] Warning: failed to upload code snapshot: {e}")
+
+
+def _try_update_summary(
+    wb_run: _WBRun,
+    *,
+    run_tags: list[str],
+    summary: dict[str, object],
+) -> None:
+    """Best-effort W&B summary update and tag setting."""
+    try:
+        if summary.get("exit_code") != 0:
+            wb_run.tags = [*run_tags, "failed"]
+        wb_run.summary.update(summary)
+    except Exception:  # noqa: BLE001
+        print("[genai_runner] Warning: failed to update W&B summary")
+
+
+def _try_finish(wb_run: _WBRun, exit_code: int) -> None:
+    """Best-effort W&B run finish."""
+    try:
+        wb_run.finish(exit_code=exit_code)
+    except Exception:  # noqa: BLE001
+        print("[genai_runner] Warning: failed to finish W&B run")
