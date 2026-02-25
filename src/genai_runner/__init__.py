@@ -17,10 +17,13 @@ import zipfile
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal, TextIO
 
 import questionary
 import wandb
+
+if TYPE_CHECKING:
+    from wandb.sdk.wandb_run import Run as _WBRun
 
 ParamType = Literal[
     "str",
@@ -106,7 +109,9 @@ class Param:
         if self.log_when is None:
             log_as = _log_as_from_type(self._primary_type)
             if log_as is not None:
-                self.log_when = "after" if self._value_contains_output() else "before"
+                self.log_when = (
+                    "after" if self._value_contains_output() else "before"
+                )
 
     def _value_contains_output(self) -> bool:
         """Check whether $output appears anywhere in self.value."""
@@ -205,7 +210,7 @@ class Runner:
         keep_outputs = resolved.pop("_keep_outputs")
 
         # Prompt for missing params (interactive mode)
-        self._prompt_missing(resolved, interactive)
+        self._prompt_missing(resolved, interactive=interactive)
 
         # Git info
         git_info = _collect_git_info()
@@ -214,7 +219,8 @@ class Runner:
         # Dry-run: show command without W&B or output dir
         if dry_run:
             param_values = self._interpolate_output(
-                resolved, Path("/tmp/dry-run-output")
+                resolved,
+                Path("/tmp/dry-run-output"),  # noqa: S108
             )
             cmd = self._build_command(param_values)
             print(f"[dry-run] Project: {project}")
@@ -241,7 +247,9 @@ class Runner:
                 },
                 **{f"git/{k}": v for k, v in git_info.items()},
                 "meta/hostname": os.uname().nodename,
-                "meta/datetime": datetime.datetime.now().isoformat(),
+                "meta/datetime": datetime.datetime.now(
+                    tz=datetime.UTC
+                ).isoformat(),
                 "meta/command": shlex.join(self.command)
                 if isinstance(self.command, list)
                 else self.command,
@@ -249,9 +257,13 @@ class Runner:
         )
 
         # Output dir
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime(
+            "%Y%m%d_%H%M"
+        )
         dir_name = wb_run.name or wb_run.id or "run"
-        output_dir = Path.home() / "genai_runs" / project / f"{timestamp}_{dir_name}"
+        output_dir = (
+            Path.home() / "genai_runs" / project / f"{timestamp}_{dir_name}"
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
@@ -261,7 +273,7 @@ class Runner:
         param_values = self._interpolate_output(resolved, output_dir)
 
         # Log input files (log_when == "before")
-        self._log_files(wb_run, param_values, output_dir, when="before")
+        self._log_files(wb_run, param_values, when="before")
 
         # Build command
         cmd = self._build_command(param_values)
@@ -279,26 +291,11 @@ class Runner:
         self._extract_metrics(wb_run, stdout_text)
 
         # Log output files (log_when == "after")
-        self._log_files(wb_run, param_values, output_dir, when="after")
+        self._log_files(wb_run, param_values, when="after")
 
-        # Log uncontrolled outputs
+        # Log uncontrolled outputs + run logs
         self._log_extra_outputs(wb_run, output_dir)
-
-        # Log the run log files
-        existing_logs = [
-            output_dir / name
-            for name in ("run.log", "stdout.log", "stderr.log")
-            if (output_dir / name).exists()
-        ]
-        if existing_logs:
-            artifact = wandb.Artifact(f"logs-{wb_run.id}", type="log")
-            for f in existing_logs:
-                artifact.add_file(str(f))
-            wb_run.log_artifact(artifact)
-
-        # Count outputs for summary
-        num_videos = self._count_logged("video")
-        num_images = self._count_logged("image")
+        self._log_run_logs(wb_run, output_dir)
 
         # Finalize
         status = "failed" if exit_code != 0 else "success"
@@ -309,8 +306,8 @@ class Runner:
                 "exit_code": exit_code,
                 "duration_seconds": duration,
                 "status": status,
-                "num_videos": num_videos,
-                "num_images": num_images,
+                "num_videos": self._count_logged("video"),
+                "num_images": self._count_logged("image"),
                 "output_dir": str(output_dir),
             }
         )
@@ -349,11 +346,18 @@ class Runner:
         parser.add_argument(
             "--keep-outputs",
             action="store_true",
-            help="Keep local output directory (always kept, flag is a no-op reminder)",
+            help=(
+                "Keep local output directory"
+                " (always kept, flag is a no-op reminder)"
+            ),
         )
-        parser.add_argument("--run-name", default=None, help="Override W&B run name")
         parser.add_argument(
-            "--wandb-project", default=None, help="Override W&B project name"
+            "--run-name", default=None, help="Override W&B run name"
+        )
+        parser.add_argument(
+            "--wandb-project",
+            default=None,
+            help="Override W&B project name",
         )
 
         for p in self.params:
@@ -361,21 +365,26 @@ class Runner:
                 continue
             kwargs: dict = {
                 "default": None,
-                "help": argparse.SUPPRESS if p.hidden else (p.help or None),
+                "help": argparse.SUPPRESS
+                if p.hidden
+                else (p.help or None),
             }
             if p._primary_type == "bool":
                 kwargs.update(action="store_true", default=False)
             else:
-                kwargs["type"] = _PARAM_TYPE_MAP.get(p._primary_type, str)
+                kwargs["type"] = _PARAM_TYPE_MAP.get(
+                    p._primary_type, str
+                )
                 if p.nargs is not None:
-                    # Multi-value: argparse gets nargs=N, all as str (typed later)
+                    # Multi-value: argparse gets nargs=N, all as str
                     kwargs["nargs"] = p.nargs
                     kwargs["type"] = str
                     if p.labels and not p.hidden:
                         kwargs["metavar"] = tuple(p.labels)
                         kwargs["help"] = (
-                            f"{p.help or ''} ({' '.join(p.labels)})".strip()
-                        )
+                            f"{p.help or ''}"
+                            f" ({' '.join(p.labels)})"
+                        ).strip()
             if p.choices:
                 kwargs["choices"] = p.choices
             assert p.flag is not None
@@ -383,7 +392,9 @@ class Runner:
 
         ns = parser.parse_args()
         result = {
-            p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
+            p.dest: getattr(ns, p.dest, None)
+            for p in self.params
+            if not p.is_fixed
         }
         result["_dry_run"] = ns.dry_run
         result["_no_interactive"] = ns.no_interactive
@@ -408,17 +419,23 @@ class Runner:
                 resolved[p.dest] = overrides[p.dest]
             # Apply callable defaults
             if resolved.get(p.dest) is None and p.default is not None:
-                resolved[p.dest] = p.default() if callable(p.default) else p.default
+                resolved[p.dest] = (
+                    p.default() if callable(p.default) else p.default
+                )
             # Cast multi-value args to per-element types
             if p.types and resolved.get(p.dest) is not None:
-                resolved[p.dest] = _cast_nargs(resolved[p.dest], p.types)
+                resolved[p.dest] = _cast_nargs(
+                    resolved[p.dest], p.types
+                )
         return resolved
 
     # -----------------------------------------------------------------------
     # Interactive prompts
     # -----------------------------------------------------------------------
 
-    def _prompt_missing(self, resolved: dict, interactive: bool) -> None:
+    def _prompt_missing(
+        self, resolved: dict, *, interactive: bool
+    ) -> None:
         missing = [
             p
             for p in self.params
@@ -433,7 +450,8 @@ class Runner:
         if not interactive:
             names = [p.name for p in missing]
             print(
-                f"Error: missing required params: {', '.join(names)}", file=sys.stderr
+                f"Error: missing required params: {', '.join(names)}",
+                file=sys.stderr,
             )
             print(
                 "Run without -n for interactive mode,"
@@ -448,10 +466,12 @@ class Runner:
             else:
                 resolved[p.dest] = self._prompt_single(p)
 
-    def _prompt_single(self, p: Param) -> Any:
+    def _prompt_single(self, p: Param) -> int | float | str:
         label = p.help or p.name
         if p.choices:
-            answer = questionary.select(f"{label}:", choices=p.choices).ask()
+            answer = questionary.select(
+                f"{label}:", choices=p.choices
+            ).ask()
         elif p._primary_type.startswith("path"):
             answer = questionary.path(f"{label}:").ask()
         else:
@@ -466,14 +486,20 @@ class Runner:
 
     def _prompt_nargs(self, p: Param) -> list:
         assert p.nargs is not None
-        labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
+        labels = p.labels or [
+            f"{p.name}[{i}]" for i in range(p.nargs)
+        ]
         element_types = p.types or [p._primary_type] * p.nargs
         parts = []
         for label, etype in zip(labels, element_types, strict=True):
             if etype.startswith("path"):
-                answer = questionary.path(f"{p.name} {label}:").ask()
+                answer = questionary.path(
+                    f"{p.name} {label}:"
+                ).ask()
             else:
-                answer = questionary.text(f"{p.name} {label}:").ask()
+                answer = questionary.text(
+                    f"{p.name} {label}:"
+                ).ask()
             if answer is None:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
@@ -484,7 +510,9 @@ class Runner:
     # $output interpolation
     # -----------------------------------------------------------------------
 
-    def _interpolate_output(self, resolved: dict, output_dir: Path) -> dict:
+    def _interpolate_output(
+        self, resolved: dict, output_dir: Path
+    ) -> dict:
         """Return a copy of resolved with $output replaced in fixed-value params."""
         result = dict(resolved)
         out = str(output_dir)
@@ -492,9 +520,13 @@ class Runner:
             if not p.is_fixed:
                 continue
             if isinstance(p.value, list):
-                interpolated = [str(v).replace("$output", out) for v in p.value]
+                interpolated = [
+                    str(v).replace("$output", out) for v in p.value
+                ]
                 if any("$output" in str(v) for v in p.value):
-                    Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
+                    Path(interpolated[0]).parent.mkdir(
+                        parents=True, exist_ok=True
+                    )
                 result[p.dest] = interpolated
             else:
                 val = str(p.value).replace("$output", out)
@@ -531,39 +563,52 @@ class Runner:
     # Subprocess execution
     # -----------------------------------------------------------------------
 
-    def _execute(self, cmd: list[str], output_dir: Path) -> tuple[int, float, str]:
+    def _execute(
+        self, cmd: list[str], output_dir: Path
+    ) -> tuple[int, float, str]:
         stdout_lines: list[str] = []
         lock = threading.Lock()
 
+        def stream_pipe(
+            pipe: IO[bytes],
+            sys_stream: TextIO,
+            file_log: TextIO,
+            *,
+            prefix: str = "",
+            capture: bool = False,
+        ) -> None:
+            for raw_line in iter(pipe.readline, b""):
+                line = raw_line.decode("utf-8", errors="replace")
+                sys_stream.write(line)
+                sys_stream.flush()
+                file_log.write(line)
+                file_log.flush()
+                with lock:
+                    log_combined.write(prefix + line)
+                    log_combined.flush()
+                    if capture:
+                        stdout_lines.append(line)
+            pipe.close()
+
         with ExitStack() as stack:
-            log_combined = stack.enter_context(open(output_dir / "run.log", "w"))
-            log_stdout = stack.enter_context(open(output_dir / "stdout.log", "w"))
-            log_stderr = stack.enter_context(open(output_dir / "stderr.log", "w"))
+            log_combined = stack.enter_context(
+                (output_dir / "run.log").open("w")
+            )
+            log_stdout = stack.enter_context(
+                (output_dir / "stdout.log").open("w")
+            )
+            log_stderr = stack.enter_context(
+                (output_dir / "stderr.log").open("w")
+            )
 
             run_env = {**os.environ, **self.env}
 
-            proc = subprocess.Popen(
+            proc = subprocess.Popen(  # noqa: S603
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=run_env,
             )
-
-            def stream_pipe(
-                pipe, sys_stream, file_log, *, prefix="", capture=False
-            ) -> None:
-                for raw_line in iter(pipe.readline, b""):
-                    line = raw_line.decode("utf-8", errors="replace")
-                    sys_stream.write(line)
-                    sys_stream.flush()
-                    file_log.write(line)
-                    file_log.flush()
-                    with lock:
-                        log_combined.write(prefix + line)
-                        log_combined.flush()
-                        if capture:
-                            stdout_lines.append(line)
-                pipe.close()
 
             t_out = threading.Thread(
                 target=stream_pipe,
@@ -583,7 +628,10 @@ class Runner:
             try:
                 proc.wait()
             except KeyboardInterrupt:
-                print("\n[genai_runner] Ctrl-C received, terminating subprocess...")
+                print(
+                    "\n[genai_runner] Ctrl-C received,"
+                    " terminating subprocess..."
+                )
                 proc.send_signal(signal.SIGTERM)
                 try:
                     proc.wait(timeout=10)
@@ -602,7 +650,7 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _log_files(
-        self, wb_run, param_values: dict, output_dir: Path, when: str
+        self, wb_run: _WBRun, param_values: dict, when: str
     ) -> None:
         for p in self.params:
             log_as = _log_as_from_type(p._primary_type)
@@ -616,11 +664,16 @@ class Runner:
                 path_val = path_val[0]
             path = Path(path_val)
             if not path.exists():
-                print(f"[genai_runner] Warning: {path} not found, skipping upload")
+                print(
+                    f"[genai_runner] Warning: {path} not found,"
+                    " skipping upload"
+                )
                 continue
             _upload_file(wb_run, path, log_as, label=p.name)
 
-    def _log_extra_outputs(self, wb_run, output_dir: Path) -> None:
+    def _log_extra_outputs(
+        self, wb_run: _WBRun, output_dir: Path
+    ) -> None:
         out = str(output_dir)
         zip_counter = 0
         for o in self.outputs:
@@ -628,64 +681,121 @@ class Runner:
             is_glob = any(c in raw_path for c in ("*", "?", "["))
 
             if is_glob:
-                base, pattern = _split_glob(raw_path)
-                matches = sorted(base.glob(pattern))
-                if not matches:
-                    print(
-                        f"[genai_runner] Warning: glob '{o.path}'"
-                        " matched no files, skipping"
-                    )
-                    continue
-
-                if o.log_as == "zip":
-                    zip_name = base.name or "output"
-                    suffix = f"_{zip_counter}" if zip_counter else ""
-                    zip_path = output_dir / f"{zip_name}{suffix}.zip"
-                    zip_counter += 1
-                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for m in matches:
-                            if m.is_file():
-                                zf.write(m, m.relative_to(base))
-                    _upload_file(wb_run, zip_path, "artifact")
-                else:
-                    for m in matches:
-                        if m.is_file():
-                            _upload_file(wb_run, m, o.log_as)
-
+                zip_counter = self._log_glob_output(
+                    wb_run, o, raw_path, output_dir, zip_counter
+                )
             elif Path(raw_path).is_dir():
-                if o.log_as == "zip":
-                    src = Path(raw_path)
-                    suffix = f"_{zip_counter}" if zip_counter else ""
-                    zip_path = output_dir / f"{src.name}{suffix}.zip"
-                    zip_counter += 1
-                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for f in sorted(src.rglob("*")):
-                            if f.is_file():
-                                zf.write(f, f.relative_to(src))
-                    _upload_file(wb_run, zip_path, "artifact")
-                else:
-                    print(
-                        f"[genai_runner] Warning: {raw_path} is a directory, "
-                        f"use log_as='zip' or a glob pattern"
-                    )
-
+                zip_counter = self._log_dir_output(
+                    wb_run, o, raw_path, output_dir, zip_counter
+                )
             else:
-                src = Path(raw_path)
-                if not src.exists():
-                    print(f"[genai_runner] Warning: {src} not found, skipping")
-                    continue
-                if o.copy_to:
-                    dst = Path(o.copy_to.replace("$output", out))
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
-                    src = dst
-                _upload_file(wb_run, src, o.log_as)
+                self._log_single_output(wb_run, o, raw_path, out)
+
+    def _log_glob_output(
+        self,
+        wb_run: _WBRun,
+        o: Output,
+        raw_path: str,
+        output_dir: Path,
+        zip_counter: int,
+    ) -> int:
+        base, pattern = _split_glob(raw_path)
+        matches = sorted(base.glob(pattern))
+        if not matches:
+            print(
+                f"[genai_runner] Warning: glob '{o.path}'"
+                " matched no files, skipping"
+            )
+            return zip_counter
+
+        if o.log_as == "zip":
+            suffix = f"_{zip_counter}" if zip_counter else ""
+            zip_name = base.name or "output"
+            zip_path = output_dir / f"{zip_name}{suffix}.zip"
+            zip_counter += 1
+            with zipfile.ZipFile(
+                zip_path, "w", zipfile.ZIP_DEFLATED
+            ) as zf:
+                for m in matches:
+                    if m.is_file():
+                        zf.write(m, m.relative_to(base))
+            _upload_file(wb_run, zip_path, "artifact")
+        else:
+            for m in matches:
+                if m.is_file():
+                    _upload_file(wb_run, m, o.log_as)
+        return zip_counter
+
+    def _log_dir_output(
+        self,
+        wb_run: _WBRun,
+        o: Output,
+        raw_path: str,
+        output_dir: Path,
+        zip_counter: int,
+    ) -> int:
+        if o.log_as != "zip":
+            print(
+                f"[genai_runner] Warning: {raw_path} is a directory,"
+                " use log_as='zip' or a glob pattern"
+            )
+            return zip_counter
+        src = Path(raw_path)
+        suffix = f"_{zip_counter}" if zip_counter else ""
+        zip_path = output_dir / f"{src.name}{suffix}.zip"
+        zip_counter += 1
+        with zipfile.ZipFile(
+            zip_path, "w", zipfile.ZIP_DEFLATED
+        ) as zf:
+            for f in sorted(src.rglob("*")):
+                if f.is_file():
+                    zf.write(f, f.relative_to(src))
+        _upload_file(wb_run, zip_path, "artifact")
+        return zip_counter
+
+    def _log_single_output(
+        self,
+        wb_run: _WBRun,
+        o: Output,
+        raw_path: str,
+        out: str,
+    ) -> None:
+        src = Path(raw_path)
+        if not src.exists():
+            print(
+                f"[genai_runner] Warning: {src} not found, skipping"
+            )
+            return
+        if o.copy_to:
+            dst = Path(o.copy_to.replace("$output", out))
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            src = dst
+        _upload_file(wb_run, src, o.log_as)
+
+    def _log_run_logs(
+        self, wb_run: _WBRun, output_dir: Path
+    ) -> None:
+        existing_logs = [
+            output_dir / name
+            for name in ("run.log", "stdout.log", "stderr.log")
+            if (output_dir / name).exists()
+        ]
+        if existing_logs:
+            artifact = wandb.Artifact(
+                f"logs-{wb_run.id}", type="log"
+            )
+            for f in existing_logs:
+                artifact.add_file(str(f))
+            wb_run.log_artifact(artifact)
 
     # -----------------------------------------------------------------------
     # Metric extraction
     # -----------------------------------------------------------------------
 
-    def _extract_metrics(self, wb_run, stdout_text: str) -> None:
+    def _extract_metrics(
+        self, wb_run: _WBRun, stdout_text: str
+    ) -> None:
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
             if not matches:
@@ -702,7 +812,9 @@ class Runner:
     def _count_logged(self, media_type: str) -> int:
         """Count params and outputs that log as the given media type."""
         return sum(
-            1 for p in self.params if _log_as_from_type(p._primary_type) == media_type
+            1
+            for p in self.params
+            if _log_as_from_type(p._primary_type) == media_type
         ) + sum(1 for o in self.outputs if o.log_as == media_type)
 
 
@@ -714,9 +826,15 @@ class Runner:
 def _cast_nargs(values: list, types: list[str]) -> list:
     """Cast each element in *values* according to the corresponding type string."""
     if len(values) != len(types):
-        msg = f"Expected {len(types)} values, got {len(values)}: {values}"
+        msg = (
+            f"Expected {len(types)} values,"
+            f" got {len(values)}: {values}"
+        )
         raise ValueError(msg)
-    return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)]
+    return [
+        _PARAM_TYPE_MAP.get(t, str)(v)
+        for v, t in zip(values, types, strict=True)
+    ]
 
 
 def _split_glob(path_str: str) -> tuple[Path, str]:
@@ -731,7 +849,12 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
     return Path(path_str).parent, Path(path_str).name
 
 
-def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> None:
+def _upload_file(
+    wb_run: _WBRun,
+    path: Path,
+    log_as: str,
+    label: str | None = None,
+) -> None:
     key = label or path.stem
     try:
         if log_as == "video":
@@ -742,24 +865,34 @@ def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> N
             text = path.read_text(errors="replace")
             wb_run.log({key: wandb.Html(f"<pre>{text}</pre>")})
         elif log_as == "artifact":
-            artifact = wandb.Artifact(f"{key}-{wb_run.id}", type=log_as)
+            artifact = wandb.Artifact(
+                f"{key}-{wb_run.id}", type=log_as
+            )
             artifact.add_file(str(path))
             wb_run.log_artifact(artifact)
-    except Exception as e:
-        print(f"[genai_runner] Warning: failed to upload {path} as {log_as}: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(
+            f"[genai_runner] Warning: failed to upload"
+            f" {path} as {log_as}: {e}"
+        )
 
 
 def _collect_git_info() -> dict:
     def git(*args: str) -> str:
         return (
-            subprocess.check_output(["git", *args], stderr=subprocess.DEVNULL)
+            subprocess.check_output(  # noqa: S603
+                ["git", *args],  # noqa: S607
+                stderr=subprocess.DEVNULL,
+            )
             .decode()
             .strip()
         )
 
     try:
         return {
-            "repo": git("rev-parse", "--show-toplevel").rsplit("/", 1)[-1],
+            "repo": git(
+                "rev-parse", "--show-toplevel"
+            ).rsplit("/", 1)[-1],
             "commit": git("rev-parse", "HEAD"),
             "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
             "dirty": bool(git("status", "--porcelain")),
@@ -768,7 +901,9 @@ def _collect_git_info() -> dict:
         return {}
 
 
-def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict) -> None:
+def _save_code_snapshot(
+    wb_run: _WBRun, output_dir: Path, git_info: dict
+) -> None:
     """Save a full code snapshot: git archive + dirty diff."""
     if not git_info:
         return
@@ -777,17 +912,23 @@ def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict) -> None:
     code_dir.mkdir(exist_ok=True)
 
     def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ["git", *args],
+        return subprocess.run(  # noqa: S603
+            ["git", *args],  # noqa: S607
             capture_output=True,
+            check=False,
             timeout=30,
         )
 
     # git archive: full snapshot of tracked files at HEAD
     archive_path = code_dir / "source.tar.gz"
-    result = git("archive", "--format=tar.gz", "-o", str(archive_path), "HEAD")
+    result = git(
+        "archive", "--format=tar.gz", "-o", str(archive_path), "HEAD"
+    )
     if result.returncode != 0:
-        print(f"[genai_runner] Warning: git archive failed: {result.stderr.decode()}")
+        print(
+            "[genai_runner] Warning: git archive failed:"
+            f" {result.stderr.decode()}"
+        )
         return
 
     # Dirty diff (staged + unstaged vs HEAD)
@@ -800,10 +941,15 @@ def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict) -> None:
 
     # Upload as W&B artifact
     try:
-        artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
+        artifact = wandb.Artifact(
+            f"code-{wb_run.id}", type="code"
+        )
         artifact.add_file(str(archive_path))
         if diff_path and diff_path.exists():
             artifact.add_file(str(diff_path))
         wb_run.log_artifact(artifact)
-    except Exception as e:
-        print(f"[genai_runner] Warning: failed to upload code snapshot: {e}")
+    except Exception as e:  # noqa: BLE001
+        print(
+            "[genai_runner] Warning: failed to upload"
+            f" code snapshot: {e}"
+        )
