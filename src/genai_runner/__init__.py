@@ -709,7 +709,8 @@ class Runner:
 def _cast_nargs(values: list, types: list[str]) -> list:
     """Cast each element in *values* according to the corresponding type string."""
     if len(values) != len(types):
-        raise ValueError(f"Expected {len(types)} values, got {len(values)}: {values}")
+        msg = f"Expected {len(types)} values, got {len(values)}: {values}"
+        raise ValueError(msg)
     return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)]
 
 
