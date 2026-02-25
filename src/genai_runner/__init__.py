@@ -193,7 +193,7 @@ class Runner:
     tags: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     wandb_project: str | None = None  # default: git repo name
-    group: str | None = None  # W&B run group (auto-generated on first run if None)
+    group: str | None = None  # W&B run group for sweeps
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
@@ -226,15 +226,11 @@ class Runner:
         if git_info.get("dirty"):
             run_tags.append("dirty-git")
 
-        # Auto-generate group on first run (reused by subsequent calls)
-        if self.group is None:
-            self.group = f"sweep-{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
         run_name = resolved.pop("_run_name", None)
         wb_run = wandb.init(
             project=project,
             name=run_name,
-            group=self.group,
+            group=self.group or None,
             tags=run_tags,
             save_code=True,
             config={

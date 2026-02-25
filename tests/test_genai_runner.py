@@ -690,8 +690,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     mock_wb.init.assert_called_once()
     assert mock_wb.init.call_args[1]["project"] == "test-repo"
     assert mock_wb.init.call_args[1]["save_code"] is True
-    assert "group" in mock_wb.init.call_args[1]
-    assert mock_wb.init.call_args[1]["group"].startswith("sweep-")
+    assert mock_wb.init.call_args[1]["group"] is None
     assert wb_run.summary["status"] == "success"
     assert wb_run.summary["exit_code"] == 0
     assert wb_run.summary["duration_seconds"] > 0

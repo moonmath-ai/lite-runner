@@ -13,7 +13,7 @@ and code snapshots for reproducibility.
 pip install genai-runner
 # or as a uv script dependency:
 # /// script
-# dependencies = ["genai-runner @ git+https://github.com/YOU/genai-runner"]
+# dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
 # ///
 ```
 
@@ -22,6 +22,9 @@ pip install genai-runner
 Create a `run.py` for your model:
 
 ```python
+# /// script
+# dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
+# ///
 from genai_runner import Runner, Param, Output, Metric
 
 runner = Runner(
@@ -64,17 +67,17 @@ Each `runner.run()` call:
 ## Param
 
 ```python
-Param("name")                                    # basic string param
-Param("seed", type="int", default=42)            # typed with default
-Param("mode", choices=["fast", "quality"])        # select from choices
-Param("image", type="path-image")                # file input, uploaded to W&B before run
-Param("output-path", value="$output/video.mp4",  # fixed value, $output interpolated
-      type="path-video")                          # uploaded to W&B after run
+Param("name")                                          # basic string param
+Param("seed", type="int", default=42)                  # typed with default
+Param("mode", choices=["fast", "quality"])             # select from choices
+Param("image", type="path-image")                      # file input, uploaded to W&B before run
+Param("output-path", value="$output/video.mp4",        # fixed value, $output interpolated
+      type="path-video")                               # uploaded to W&B after run
 Param("image", type=["path-image", "float", "float"],  # multi-value flag
-      labels=["path", "start", "strength"])             # each part prompted separately in TUI
+      labels=["img", "start", "strength"])             # each part prompted separately in TUI
 ```
 
-- `value=` makes a param fixed (never prompted, not in CLI)
+- `value=` makes a param fixed (never prompted, not in CLI). value can be a callable
 - `$output` in value is replaced with the run's output directory
 - `type="path-*"` encodes upload intent:
   - `"path-video"` — upload as video to W&B
@@ -120,7 +123,7 @@ Loop with overrides. Runs are grouped in W&B for easy comparison:
 runner = Runner(
     command="python gen.py",
     params=[...],
-    group="lr-sweep",           # explicit group name (auto-generated if omitted)
+    group="lr-sweep",           # groups all runs together in W&B UI
 )
 for lr in [1e-3, 1e-4, 1e-5]:
     runner.run(overrides={"learning_rate": lr})
@@ -139,7 +142,7 @@ Runner(
     tags=["experiment-1"],            # W&B run tags
     env={"CUDA_VISIBLE_DEVICES": "0"},  # extra env vars for subprocess
     wandb_project="my-project",       # default: git repo name
-    group="my-sweep",                 # W&B run group for sweeps (auto-generated if None)
+    group="my-sweep",                 # W&B run group for sweeps (None = no grouping)
 )
 ```
 
