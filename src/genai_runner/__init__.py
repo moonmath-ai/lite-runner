@@ -546,7 +546,7 @@ class Runner:
                 env=run_env,
             )
 
-            def stream_pipe(pipe, sys_stream, file_log, *, prefix="", capture=False):
+            def stream_pipe(pipe, sys_stream, file_log, *, prefix="", capture=False) -> None:
                 for raw_line in iter(pipe.readline, b""):
                     line = raw_line.decode("utf-8", errors="replace")
                     sys_stream.write(line)
