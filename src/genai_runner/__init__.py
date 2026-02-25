@@ -76,7 +76,7 @@ class Param:
             variants encode upload intent: ``path-video`` means
             "parse as a path, upload as video to W&B".
         default: Default value.  Can be a callable (called at
-            resolve time).
+            resolve time).  Ignored for type="bool" (always False).
         choices: Allowed values (shown as select in TUI).
         help: Description shown in --help and TUI prompt.
         flag: Override the CLI flag (default: --<name with hyphens>).
@@ -106,6 +106,13 @@ class Param:
         self._dest = self.name.replace("-", "_")
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
+        if self._primary_type == "bool" and self.default not in (None, False):
+            print(
+                f"[genai_runner] Warning: Param('{self.name}', type='bool')"
+                f" has default={self.default!r} which is ignored"
+                " (bool params always default to False)",
+                file=sys.stderr,
+            )
         if self.log_when is None:
             log_as = _log_as_from_type(self._primary_type)
             if log_as is not None:
@@ -234,7 +241,7 @@ class Runner:
         wb_run = wandb.init(
             project=project,
             name=run_name,
-            group=self.group or None,
+            group=self.group,
             tags=run_tags,
             save_code=True,
             config={
@@ -281,29 +288,29 @@ class Runner:
 
         # --- Post-run: never raise, always try to finish W&B run ---
         status = "failed" if exit_code != 0 else "success"
+        summary = {
+            "exit_code": exit_code,
+            "duration_seconds": duration,
+            "status": status,
+            "output_dir": str(output_dir),
+        }
 
         for step_name, step in [
             ("extract metrics", lambda: self._extract_metrics(wb_run, stdout_text)),
-            ("log output files", lambda: self._log_files(wb_run, param_values, when="after")),  # noqa: E501
+            (
+                "log output files",
+                lambda: self._log_files(wb_run, param_values, when="after"),
+            ),  # noqa: E501
             ("log extra outputs", lambda: self._log_extra_outputs(wb_run, output_dir)),
             ("log run logs", lambda: self._log_run_logs(wb_run, output_dir)),
+            ("tag failed run", lambda: _tag_failed(wb_run, exit_code, run_tags)),
+            ("update W&B summary", lambda: wb_run.summary.update(summary)),
+            ("finish W&B run", lambda: wb_run.finish(exit_code=exit_code)),
         ]:
             try:
                 step()
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
-
-        _try_update_summary(
-            wb_run,
-            run_tags=run_tags,
-            summary={
-                "exit_code": exit_code,
-                "duration_seconds": duration,
-                "status": status,
-                "output_dir": str(output_dir),
-            },
-        )
-        _try_finish(wb_run, exit_code)
 
         print("=" * 60)
         print(f"Status: {status} (exit code {exit_code})")
@@ -399,8 +406,8 @@ class Runner:
             # Override from run(overrides=...) takes priority over CLI
             if p.dest in overrides:
                 resolved[p.dest] = overrides[p.dest]
-            # Apply callable defaults
-            if resolved.get(p.dest) is None and p.default is not None:
+            # Apply callable defaults (only if not overridden)
+            elif resolved.get(p.dest) is None and p.default is not None:
                 resolved[p.dest] = p.default() if callable(p.default) else p.default
             # Cast multi-value args to per-element types
             if p.types and resolved.get(p.dest) is not None:
@@ -589,6 +596,11 @@ class Runner:
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait()
+                # Close pipes so reader threads unblock
+                if proc.stdout:
+                    proc.stdout.close()
+                if proc.stderr:
+                    proc.stderr.close()
 
             t_out.join()
             t_err.join()
@@ -623,90 +635,40 @@ class Runner:
         for o in self.outputs:
             raw_path = o.path.replace("$output", out)
             is_glob = any(c in raw_path for c in ("*", "?", "["))
+            path = Path(raw_path)
 
             if is_glob:
-                zip_counter = self._log_glob_output(
-                    wb_run, o, raw_path, output_dir, zip_counter
+                base, pattern = _split_glob(raw_path)
+                matches = sorted(base.glob(pattern))
+            elif path.is_dir():
+                if o.log_as != "zip":
+                    print(
+                        f"[genai_runner] Warning: {raw_path} is a directory,"
+                        " use log_as='zip' or a glob pattern"
+                    )
+                    continue
+                base = path
+                matches = sorted(path.rglob("*"))
+            else:
+                _log_single_output(wb_run, path, o, out)
+                continue
+
+            # Glob or directory: upload matches
+            if not matches:
+                print(
+                    f"[genai_runner] Warning: glob '{o.path}'"
+                    " matched no files, skipping"
                 )
-            elif Path(raw_path).is_dir():
-                zip_counter = self._log_dir_output(
-                    wb_run, o, raw_path, output_dir, zip_counter
+                continue
+
+            if o.log_as == "zip":
+                zip_counter = _zip_and_upload(
+                    wb_run, matches, base, output_dir, zip_counter
                 )
             else:
-                self._log_single_output(wb_run, o, raw_path, out)
-
-    def _log_glob_output(
-        self,
-        wb_run: _WBRun,
-        o: Output,
-        raw_path: str,
-        output_dir: Path,
-        zip_counter: int,
-    ) -> int:
-        base, pattern = _split_glob(raw_path)
-        matches = sorted(base.glob(pattern))
-        if not matches:
-            print(f"[genai_runner] Warning: glob '{o.path}' matched no files, skipping")
-            return zip_counter
-
-        if o.log_as == "zip":
-            suffix = f"_{zip_counter}" if zip_counter else ""
-            zip_name = base.name or "output"
-            zip_path = output_dir / f"{zip_name}{suffix}.zip"
-            zip_counter += 1
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for m in matches:
                     if m.is_file():
-                        zf.write(m, m.relative_to(base))
-            _upload_file(wb_run, zip_path, "artifact")
-        else:
-            for m in matches:
-                if m.is_file():
-                    _upload_file(wb_run, m, o.log_as)
-        return zip_counter
-
-    def _log_dir_output(
-        self,
-        wb_run: _WBRun,
-        o: Output,
-        raw_path: str,
-        output_dir: Path,
-        zip_counter: int,
-    ) -> int:
-        if o.log_as != "zip":
-            print(
-                f"[genai_runner] Warning: {raw_path} is a directory,"
-                " use log_as='zip' or a glob pattern"
-            )
-            return zip_counter
-        src = Path(raw_path)
-        suffix = f"_{zip_counter}" if zip_counter else ""
-        zip_path = output_dir / f"{src.name}{suffix}.zip"
-        zip_counter += 1
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in sorted(src.rglob("*")):
-                if f.is_file():
-                    zf.write(f, f.relative_to(src))
-        _upload_file(wb_run, zip_path, "artifact")
-        return zip_counter
-
-    def _log_single_output(
-        self,
-        wb_run: _WBRun,
-        o: Output,
-        raw_path: str,
-        out: str,
-    ) -> None:
-        src = Path(raw_path)
-        if not src.exists():
-            print(f"[genai_runner] Warning: {src} not found, skipping")
-            return
-        if o.copy_to:
-            dst = Path(o.copy_to.replace("$output", out))
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            src = dst
-        _upload_file(wb_run, src, o.log_as)
+                        _upload_file(wb_run, m, o.log_as)
 
     def _log_run_logs(self, wb_run: _WBRun, output_dir: Path) -> None:
         existing_logs = [
@@ -770,6 +732,38 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
     return Path(path_str).parent, Path(path_str).name
 
 
+def _log_single_output(wb_run: _WBRun, path: Path, o: Output, out: str) -> None:
+    """Handle a single (non-glob, non-directory) output file."""
+    if not path.exists():
+        print(f"[genai_runner] Warning: {path} not found, skipping")
+        return
+    if o.copy_to:
+        dst = Path(o.copy_to.replace("$output", out))
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dst)
+        path = dst
+    _upload_file(wb_run, path, o.log_as)
+
+
+def _zip_and_upload(
+    wb_run: _WBRun,
+    matches: list[Path],
+    base: Path,
+    output_dir: Path,
+    zip_counter: int,
+) -> int:
+    """Zip matched files and upload as artifact. Returns incremented zip_counter."""
+    suffix = f"_{zip_counter}" if zip_counter else ""
+    zip_name = base.name or "output"
+    zip_path = output_dir / f"{zip_name}{suffix}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for m in matches:
+            if m.is_file():
+                zf.write(m, m.relative_to(base))
+    _upload_file(wb_run, zip_path, "artifact")
+    return zip_counter + 1
+
+
 def _upload_file(
     wb_run: _WBRun,
     path: Path,
@@ -791,6 +785,12 @@ def _upload_file(
             wb_run.log_artifact(artifact)
     except Exception as e:  # noqa: BLE001
         print(f"[genai_runner] Warning: failed to upload {path} as {log_as}: {e}")
+
+
+def _tag_failed(wb_run: _WBRun, exit_code: int, run_tags: list[str]) -> None:
+    """Set 'failed' tag on W&B run if exit code is non-zero."""
+    if exit_code != 0:
+        wb_run.tags = [*run_tags, "failed"]
 
 
 def _collect_git_info() -> dict:
@@ -855,26 +855,3 @@ def _save_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> Non
         wb_run.log_artifact(artifact)
     except Exception as e:  # noqa: BLE001
         print(f"[genai_runner] Warning: failed to upload code snapshot: {e}")
-
-
-def _try_update_summary(
-    wb_run: _WBRun,
-    *,
-    run_tags: list[str],
-    summary: dict[str, object],
-) -> None:
-    """Best-effort W&B summary update and tag setting."""
-    try:
-        if summary.get("exit_code") != 0:
-            wb_run.tags = [*run_tags, "failed"]
-        wb_run.summary.update(summary)
-    except Exception:  # noqa: BLE001
-        print("[genai_runner] Warning: failed to update W&B summary")
-
-
-def _try_finish(wb_run: _WBRun, exit_code: int) -> None:
-    """Best-effort W&B run finish."""
-    try:
-        wb_run.finish(exit_code=exit_code)
-    except Exception:  # noqa: BLE001
-        print("[genai_runner] Warning: failed to finish W&B run")
