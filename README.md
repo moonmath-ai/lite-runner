@@ -10,8 +10,12 @@ and code snapshots for reproducibility.
 ## Install
 
 ```bash
-pip install genai-runner
-# or as a uv script dependency:
+pip install genai-runner@git+https://github.com/tsvikas/genai-runner
+```
+
+Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies):
+
+```python
 # /// script
 # dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
 # ///
@@ -25,7 +29,7 @@ Create a `run.py` for your model:
 # /// script
 # dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
 # ///
-from genai_runner import Runner, Param, Output, Metric
+from genai_runner import Runner, Param, Metric
 
 runner = Runner(
     command="python generate.py",
@@ -73,11 +77,12 @@ Param("mode", choices=["fast", "quality"])             # select from choices
 Param("image", type="path-image")                      # file input, uploaded to W&B before run
 Param("output-path", value="$output/video.mp4",        # fixed value, $output interpolated
       type="path-video")                               # uploaded to W&B after run
-Param("image", type=["path-image", "float", "float"],  # multi-value flag
-      labels=["img", "start", "strength"])             # each part prompted separately in TUI
+Param("input-image", type=["path-image", "float", "float"],  # multi-value flag
+      labels=["img", "start", "strength"])                    # each part prompted separately in TUI
 ```
 
-- `value=` makes a param fixed (never prompted, not in CLI). value can be a callable
+- `value=` makes a param fixed (never prompted, not in CLI)
+- `default=` can be a callable (called at prompt time to compute the default)
 - `$output` in value is replaced with the run's output directory
 - `type="path-*"` encodes upload intent:
   - `"path-video"` — upload as video to W&B
