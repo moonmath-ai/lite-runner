@@ -18,12 +18,13 @@ runner = Runner(
             help="Generation mode",
         ),
         Param("seed", type="int", default=42, help="Random seed"),
-        Param("output-path", value="$output/video.mp4", log_as="video"),
+        Param("output-path", value="$output/video.mp4", type="path-video"),
     ],
     metrics=[
         Metric("skipped_pct", pattern=r"skipped=([\d.]+)%"),
     ],
     tags=["sweep", "threshold"],
+    group="threshold-sweep",  # groups all runs in W&B UI
 )
 
 if __name__ == "__main__":

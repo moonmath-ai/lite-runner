@@ -16,10 +16,9 @@ runner = Runner(
         Param(
             "image",
             help="Input image",
-            types=["path", "float", "float"],
+            type=["path-image", "float", "float"],
             labels=["path", "start_frame", "strength"],
             default=["examples/fake_input.jpg", "0", "0.8"],
-            log_as="image",
         ),
         Param("threshold", type="float", default=-3.2, help="Attention threshold"),
         Param(
@@ -29,8 +28,8 @@ runner = Runner(
             help="Generation mode",
         ),
         Param("seed", type="int", default=42, help="Random seed"),
-        Param("output-path", value="$output/video.mp4", log_as="video"),
-        Param("debug-output", value="$output/debug.pt", log_as="artifact"),
+        Param("output-path", value="$output/video.mp4", type="path-video"),
+        Param("debug-output", value="$output/debug.pt", type="path-artifact"),
     ],
     outputs=[
         # Uncontrolled output: fake_model writes model_metadata.json to cwd

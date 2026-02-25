@@ -29,7 +29,7 @@ runner = Runner(
     params=[
         Param("prompt", help="Text prompt"),
         Param("seed", type="int", default=42),
-        Param("output-path", value="$output/video.mp4", log_as="video"),
+        Param("output-path", value="$output/video.mp4", type="path-video"),
     ],
     metrics=[
         Metric("loss", pattern=r"loss=([\d.]+)"),
@@ -67,18 +67,23 @@ Each `runner.run()` call:
 Param("name")                                    # basic string param
 Param("seed", type="int", default=42)            # typed with default
 Param("mode", choices=["fast", "quality"])        # select from choices
-Param("image", type="path", log_as="image")      # file input, uploaded to W&B before run
+Param("image", type="path-image")                # file input, uploaded to W&B before run
 Param("output-path", value="$output/video.mp4",  # fixed value, $output interpolated
-      log_as="video")                             # uploaded to W&B after run
-Param("image", types=["path", "float", "float"], # multi-value flag: --image photo.jpg 0 0.8
-      labels=["path", "start", "strength"])       # each part prompted separately in TUI
+      type="path-video")                          # uploaded to W&B after run
+Param("image", type=["path-image", "float", "float"],  # multi-value flag
+      labels=["path", "start", "strength"])             # each part prompted separately in TUI
 ```
 
 - `value=` makes a param fixed (never prompted, not in CLI)
 - `$output` in value is replaced with the run's output directory
-- `log_as=` uploads the file to W&B (`"video"`, `"image"`, `"artifact"`, `"text"`)
+- `type="path-*"` encodes upload intent:
+  - `"path-video"` — upload as video to W&B
+  - `"path-image"` — upload as image
+  - `"path-artifact"` — upload as artifact
+  - `"path-text"` — upload as text
+  - `"path"` — file path, no auto-upload
 - `log_when=` auto-inferred: `"before"` for inputs, `"after"` for `$output` paths
-- `types=` gives per-element types for multi-value flags (nargs inferred from length)
+- `type=[...]` gives per-element types for multi-value flags (nargs inferred from length)
 
 ## Output
 
@@ -86,6 +91,14 @@ For files the model writes to uncontrolled locations:
 
 ```python
 Output("model_metadata.json", log_as="artifact", copy_to="$output/model_metadata.json")
+```
+
+Supports glob patterns and directory zipping:
+
+```python
+Output("debug/**/*.png", log_as="image")        # upload each matched png
+Output("debug/", log_as="zip")                   # zip entire directory, upload as artifact
+Output("$output/frames/*.jpg", log_as="zip")     # zip glob matches into archive
 ```
 
 ## Metric
@@ -101,14 +114,19 @@ Last match wins. Stored in `wandb.run.summary`.
 
 ## Sweeps
 
-Loop with overrides:
+Loop with overrides. Runs are grouped in W&B for easy comparison:
 
 ```python
+runner = Runner(
+    command="python gen.py",
+    params=[...],
+    group="lr-sweep",           # explicit group name (auto-generated if omitted)
+)
 for lr in [1e-3, 1e-4, 1e-5]:
     runner.run(overrides={"learning_rate": lr})
 ```
 
-Each call creates a separate W&B run.
+Each call creates a separate W&B run, all grouped under the same `group`.
 
 ## Runner options
 
@@ -121,6 +139,7 @@ Runner(
     tags=["experiment-1"],            # W&B run tags
     env={"CUDA_VISIBLE_DEVICES": "0"},  # extra env vars for subprocess
     wandb_project="my-project",       # default: git repo name
+    group="my-sweep",                 # W&B run group for sweeps (auto-generated if None)
 )
 ```
 
@@ -143,4 +162,4 @@ Runner(
 | `run.config["meta/*"]` | hostname, datetime, command |
 | `run.summary` | exit_code, duration_seconds, status, metrics |
 | Artifacts | Log files, code snapshot, artifact-type outputs |
-| Media | Videos and images from `log_as` params/outputs |
+| Media | Videos and images from `path-*` type params/outputs |

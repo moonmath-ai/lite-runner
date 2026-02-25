@@ -13,15 +13,44 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import questionary
 import wandb
 
-_PARAM_TYPE_MAP: dict[str, type] = {"int": int, "float": float, "str": str, "path": str}
+ParamType = Literal[
+    "str",
+    "int",
+    "float",
+    "bool",
+    "path",
+    "path-image",
+    "path-video",
+    "path-artifact",
+    "path-text",
+]
+
+_PARAM_TYPE_MAP: dict[str, type] = {
+    "int": int,
+    "float": float,
+    "str": str,
+    "path": str,
+    "path-image": str,
+    "path-video": str,
+    "path-artifact": str,
+    "path-text": str,
+}
+
+
+def _log_as_from_type(t: str) -> str | None:
+    """Extract upload intent from a type string, e.g. 'path-video' -> 'video'."""
+    if t.startswith("path-"):
+        return t[5:]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -34,41 +63,50 @@ class Param:
     """A CLI parameter for the model command.
 
     Args:
-        name: Parameter name, used as argparse dest (underscored) and CLI flag (hyphenated).
-        type: One of "str", "int", "float", "path", "bool". Determines argparse type and TUI widget.
-        default: Default value.  Can be a callable (called at resolve time).
+        name: Parameter name, used as argparse dest (underscored)
+            and CLI flag (hyphenated).
+        type: A ParamType or list of ParamType for multi-value
+            flags.  Single: "str", "int", "float", "bool", "path",
+            "path-image", "path-video", "path-artifact", "path-text".
+            List: e.g. ["path-image", "float", "float"] for
+            multi-value flags (nargs inferred).  The ``path-*``
+            variants encode upload intent: ``path-video`` means
+            "parse as a path, upload as video to W&B".
+        default: Default value.  Can be a callable (called at
+            resolve time).
         choices: Allowed values (shown as select in TUI).
         help: Description shown in --help and TUI prompt.
         flag: Override the CLI flag (default: --<name with hyphens>).
-        value: Fixed value with $output interpolation. Never prompted.  Can be a list for multi-value flags.
-        types: Per-element types for multi-value flags, e.g. ["path", "float", "float"].
-            Implies nargs=len(types).  Each part gets its own type in argparse and TUI.
-        labels: Names for each part, used in TUI prompts and --help metavar.
-            e.g. labels=["path", "start_frame", "strength"] prompts separately for each.
+        value: Fixed value with $output interpolation. Never
+            prompted.  Can be a list for multi-value flags.
+        labels: Names for each part, used in TUI prompts and --help
+            metavar.  e.g. labels=["path", "start_frame", "strength"]
+            prompts separately for each.
         hidden: If True, not shown in --help.
-        log_as: If set, upload the file to W&B. One of "video", "image", "artifact", "text".
-        log_when: "before" (input file) or "after" (output file).  Auto-inferred from $output in value.
+        log_when: "before" (input file) or "after" (output file).
+            Auto-inferred from $output in value when type encodes
+            upload intent (path-image, path-video, etc.).
     """
 
     name: str
-    type: str = "str"
+    type: ParamType | list[ParamType] = "str"
     default: Any = None
     choices: list[str] | None = None
     help: str = ""
     flag: str | None = None
     value: Any = None
-    types: list[str] | None = None
     labels: list[str] | None = None
     hidden: bool = False
-    log_as: str | None = None
     log_when: str | None = None
 
     def __post_init__(self) -> None:
         self._dest = self.name.replace("-", "_")
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
-        if self.log_when is None and self.log_as is not None:
-            self.log_when = "after" if self._value_contains_output() else "before"
+        if self.log_when is None:
+            log_as = _log_as_from_type(self._primary_type)
+            if log_as is not None:
+                self.log_when = "after" if self._value_contains_output() else "before"
 
     def _value_contains_output(self) -> bool:
         """Check whether $output appears anywhere in self.value."""
@@ -79,12 +117,22 @@ class Param:
         return "$output" in str(self.value)
 
     @property
+    def _primary_type(self) -> str:
+        """The type string for single-value params, or first type for multi-value."""
+        return self.type[0] if isinstance(self.type, list) else self.type
+
+    @property
+    def types(self) -> list[str] | None:
+        """Per-element types for multi-value params, or None for single-value."""
+        return list(self.type) if isinstance(self.type, list) else None
+
+    @property
     def dest(self) -> str:
         return self._dest
 
     @property
     def nargs(self) -> int | None:
-        return len(self.types) if self.types else None
+        return len(self.type) if isinstance(self.type, list) else None
 
     @property
     def is_fixed(self) -> bool:
@@ -101,9 +149,14 @@ class Output:
     """An output file not tied to any Param (uncontrolled location).
 
     Args:
-        path: Absolute path or $output-relative path.
-        log_as: One of "video", "image", "artifact", "text".
+        path: Absolute path, $output-relative path, or glob pattern
+            (e.g. "debug/**/*.png").
+        log_as: One of "video", "image", "artifact", "text", "zip".
+            With globs: "zip" collects all matches into a zip and uploads as artifact;
+            other values upload each matched file individually.
+            For directories: "zip" zips the entire directory.
         copy_to: If set, copy the file here ($output interpolated) before logging.
+            Not supported with glob patterns.
     """
 
     path: str
@@ -140,6 +193,7 @@ class Runner:
     tags: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     wandb_project: str | None = None  # default: git repo name
+    group: str | None = None  # W&B run group (auto-generated on first run if None)
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
@@ -172,10 +226,15 @@ class Runner:
         if git_info.get("dirty"):
             run_tags.append("dirty-git")
 
+        # Auto-generate group on first run (reused by subsequent calls)
+        if self.group is None:
+            self.group = f"sweep-{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
         run_name = resolved.pop("_run_name", None)
         wb_run = wandb.init(
             project=project,
             name=run_name,
+            group=self.group,
             tags=run_tags,
             save_code=True,
             config={
@@ -268,7 +327,8 @@ class Runner:
 
         if not keep_outputs:
             print(
-                f"(use --keep-outputs to preserve local files, or delete with: rm -rf '{output_dir}')"
+                "(use --keep-outputs to preserve local files,"
+                f" or delete with: rm -rf '{output_dir}')"
             )
 
     # -----------------------------------------------------------------------
@@ -310,7 +370,7 @@ class Runner:
             if p.type == "bool":
                 kwargs.update(action="store_true", default=False)
             else:
-                kwargs["type"] = _PARAM_TYPE_MAP.get(p.type, str)
+                kwargs["type"] = _PARAM_TYPE_MAP.get(p._primary_type, str)
                 if p.nargs is not None:
                     # Multi-value: argparse gets nargs=N, all as str (typed later)
                     kwargs["nargs"] = p.nargs
@@ -377,7 +437,8 @@ class Runner:
                 f"Error: missing required params: {', '.join(names)}", file=sys.stderr
             )
             print(
-                "Run without -n for interactive mode, or pass them on the command line.",
+                "Run without -n for interactive mode,"
+                " or pass them on the command line.",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -392,7 +453,7 @@ class Runner:
         label = p.help or p.name
         if p.choices:
             answer = questionary.select(f"{label}:", choices=p.choices).ask()
-        elif p.type == "path":
+        elif p._primary_type.startswith("path"):
             answer = questionary.path(f"{label}:").ask()
         else:
             answer = questionary.text(f"{label}:").ask()
@@ -401,15 +462,15 @@ class Runner:
             print("Cancelled.", file=sys.stderr)
             sys.exit(1)
 
-        caster = _PARAM_TYPE_MAP.get(p.type, str)
+        caster = _PARAM_TYPE_MAP.get(p._primary_type, str)
         return caster(answer)
 
     def _prompt_nargs(self, p: Param) -> list:
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
-        element_types = p.types or [p.type] * p.nargs
+        element_types = p.types or [p._primary_type] * p.nargs
         parts = []
-        for label, etype in zip(labels, element_types):
-            if etype == "path":
+        for label, etype in zip(labels, element_types, strict=True):
+            if etype.startswith("path"):
                 answer = questionary.path(f"{p.name} {label}:").ask()
             else:
                 answer = questionary.text(f"{p.name} {label}:").ask()
@@ -541,7 +602,8 @@ class Runner:
         self, wb_run, param_values: dict, output_dir: Path, when: str
     ) -> None:
         for p in self.params:
-            if p.log_as is None or p.log_when != when:
+            log_as = _log_as_from_type(p._primary_type)
+            if log_as is None or p.log_when != when:
                 continue
             path_val = param_values.get(p.dest)
             if path_val is None:
@@ -553,21 +615,63 @@ class Runner:
             if not path.exists():
                 print(f"[genai_runner] Warning: {path} not found, skipping upload")
                 continue
-            _upload_file(wb_run, path, p.log_as, label=p.name)
+            _upload_file(wb_run, path, log_as, label=p.name)
 
     def _log_extra_outputs(self, wb_run, output_dir: Path) -> None:
         out = str(output_dir)
         for o in self.outputs:
-            src = Path(o.path.replace("$output", out))
-            if not src.exists():
-                print(f"[genai_runner] Warning: {src} not found, skipping")
-                continue
-            if o.copy_to:
-                dst = Path(o.copy_to.replace("$output", out))
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-                src = dst
-            _upload_file(wb_run, src, o.log_as)
+            raw_path = o.path.replace("$output", out)
+            is_glob = any(c in raw_path for c in ("*", "?", "["))
+
+            if is_glob:
+                base, pattern = _split_glob(raw_path)
+                matches = sorted(base.glob(pattern))
+                if not matches:
+                    print(
+                        f"[genai_runner] Warning: glob '{o.path}'"
+                        " matched no files, skipping"
+                    )
+                    continue
+
+                if o.log_as == "zip":
+                    zip_name = base.name or "output"
+                    zip_path = output_dir / f"{zip_name}.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for m in matches:
+                            if m.is_file():
+                                zf.write(m, m.relative_to(base))
+                    _upload_file(wb_run, zip_path, "artifact")
+                else:
+                    for m in matches:
+                        if m.is_file():
+                            _upload_file(wb_run, m, o.log_as)
+
+            elif Path(raw_path).is_dir():
+                if o.log_as == "zip":
+                    src = Path(raw_path)
+                    zip_path = output_dir / f"{src.name}.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for f in sorted(src.rglob("*")):
+                            if f.is_file():
+                                zf.write(f, f.relative_to(src))
+                    _upload_file(wb_run, zip_path, "artifact")
+                else:
+                    print(
+                        f"[genai_runner] Warning: {raw_path} is a directory, "
+                        f"use log_as='zip' or a glob pattern"
+                    )
+
+            else:
+                src = Path(raw_path)
+                if not src.exists():
+                    print(f"[genai_runner] Warning: {src} not found, skipping")
+                    continue
+                if o.copy_to:
+                    dst = Path(o.copy_to.replace("$output", out))
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                    src = dst
+                _upload_file(wb_run, src, o.log_as)
 
     # -----------------------------------------------------------------------
     # Metric extraction
@@ -589,9 +693,9 @@ class Runner:
 
     def _count_logged(self, media_type: str) -> int:
         """Count params and outputs that log as the given media type."""
-        return sum(1 for p in self.params if p.log_as == media_type) + sum(
-            1 for o in self.outputs if o.log_as == media_type
-        )
+        return sum(
+            1 for p in self.params if _log_as_from_type(p._primary_type) == media_type
+        ) + sum(1 for o in self.outputs if o.log_as == media_type)
 
 
 # ---------------------------------------------------------------------------
@@ -603,7 +707,19 @@ def _cast_nargs(values: list, types: list[str]) -> list:
     """Cast each element in *values* according to the corresponding type string."""
     if len(values) != len(types):
         raise ValueError(f"Expected {len(types)} values, got {len(values)}: {values}")
-    return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types)]
+    return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)]
+
+
+def _split_glob(path_str: str) -> tuple[Path, str]:
+    """Split 'dir/sub/**/*.png' into (Path('dir/sub'), '**/*.png')."""
+    parts = Path(path_str).parts
+    for i, part in enumerate(parts):
+        if any(c in part for c in ("*", "?", "[")):
+            base = Path(*parts[:i]) if i > 0 else Path(".")
+            pattern = str(Path(*parts[i:]))
+            return base, pattern
+    # No glob chars found (shouldn't happen if caller checked)
+    return Path(path_str).parent, Path(path_str).name
 
 
 def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> None:

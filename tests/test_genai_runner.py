@@ -2,12 +2,21 @@
 
 import subprocess
 import sys
+import zipfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from genai_runner import Metric, Output, Param, Runner, _collect_git_info
-
+from genai_runner import (
+    Metric,
+    Output,
+    Param,
+    Runner,
+    _collect_git_info,
+    _log_as_from_type,
+    _split_glob,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,6 +51,62 @@ def _make_runner(params=None, **kwargs):
     return Runner(
         command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
     )
+
+
+# ---------------------------------------------------------------------------
+# _log_as_from_type
+# ---------------------------------------------------------------------------
+
+
+def test_log_as_from_type_path_image():
+    assert _log_as_from_type("path-image") == "image"
+
+
+def test_log_as_from_type_path_video():
+    assert _log_as_from_type("path-video") == "video"
+
+
+def test_log_as_from_type_path_artifact():
+    assert _log_as_from_type("path-artifact") == "artifact"
+
+
+def test_log_as_from_type_path_text():
+    assert _log_as_from_type("path-text") == "text"
+
+
+def test_log_as_from_type_plain_path():
+    assert _log_as_from_type("path") is None
+
+
+def test_log_as_from_type_str():
+    assert _log_as_from_type("str") is None
+
+
+def test_log_as_from_type_int():
+    assert _log_as_from_type("int") is None
+
+
+# ---------------------------------------------------------------------------
+# _split_glob
+# ---------------------------------------------------------------------------
+
+
+def test_split_glob_star():
+    base, pattern = _split_glob("/tmp/output/frames/*.jpg")
+    assert base == Path("/tmp/output/frames")
+    assert pattern == "*.jpg"
+
+
+def test_split_glob_doublestar():
+    base, pattern = _split_glob("debug/**/*.png")
+    assert base == Path("debug")
+    assert pattern == "**/*.png"
+
+
+def test_split_glob_question():
+    base, pattern = _split_glob("/tmp/file?.txt")
+    assert base == Path("/tmp")
+    assert pattern == "file?.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -90,42 +155,74 @@ def test_param_needs_prompt_fixed():
 
 
 def test_param_log_when_inferred_after():
-    assert Param("out", value="$output/video.mp4", log_as="video").log_when == "after"
+    assert (
+        Param("out", value="$output/video.mp4", type="path-video").log_when == "after"
+    )
 
 
 def test_param_log_when_inferred_before():
-    assert Param("image", type="path", log_as="image").log_when == "before"
+    assert Param("image", type="path-image").log_when == "before"
 
 
 def test_param_log_when_explicit_overrides():
     assert (
-        Param("out", value="$output/x.mp4", log_as="video", log_when="before").log_when
+        Param(
+            "out", value="$output/x.mp4", type="path-video", log_when="before"
+        ).log_when
         == "before"
     )
 
 
 def test_param_log_when_list_value():
     assert (
-        Param("img", value=["$output/img.jpg", "0", "0.8"], log_as="image").log_when
+        Param(
+            "img",
+            value=["$output/img.jpg", "0", "0.8"],
+            type=["path-image", "float", "float"],
+        ).log_when
         == "after"
     )
 
 
-def test_param_log_when_none_without_log_as():
+def test_param_log_when_none_without_upload_type():
     assert Param("prompt").log_when is None
 
 
-def test_param_types_infers_nargs():
+def test_param_log_when_none_plain_path():
+    """Plain 'path' type without upload suffix does not set log_when."""
+    assert Param("config", type="path").log_when is None
+
+
+def test_param_type_list_infers_nargs():
     p = Param(
-        "image", types=["path", "float", "float"], labels=["path", "start", "strength"]
+        "image",
+        type=["path-image", "float", "float"],
+        labels=["path", "start", "strength"],
     )
     assert p.nargs == 3
-    assert p.types == ["path", "float", "float"]
+    assert p.types == ["path-image", "float", "float"]
     assert p.labels == ["path", "start", "strength"]
 
 
-def test_param_nargs_none_without_types():
+def test_param_nargs_none_without_type_list():
     assert Param("prompt").nargs is None
+
+
+def test_param_primary_type_single():
+    assert Param("seed", type="int")._primary_type == "int"
+
+
+def test_param_primary_type_list():
+    p = Param("img", type=["path-image", "float", "float"])
+    assert p._primary_type == "path-image"
+
+
+def test_param_types_property_single():
+    assert Param("seed", type="int").types is None
+
+
+def test_param_types_property_list():
+    assert Param("img", type=["path", "float"]).types == ["path", "float"]
 
 
 # ---------------------------------------------------------------------------
@@ -169,12 +266,12 @@ def test_parse_choices():
         assert runner._parse_cli_args()["mode"] == "quality"
 
 
-def test_parse_types():
+def test_parse_type_list():
     runner = _make_runner(
         [
             Param(
                 "image",
-                types=["path", "float", "float"],
+                type=["path", "float", "float"],
                 labels=["path", "start", "strength"],
             )
         ]
@@ -186,7 +283,7 @@ def test_parse_types():
 
 
 def test_parse_types_with_spaces_in_path():
-    runner = _make_runner([Param("image", types=["path", "float", "float"])])
+    runner = _make_runner([Param("image", type=["path", "float", "float"])])
     with patch(
         "sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]
     ):
@@ -237,11 +334,11 @@ def test_cli_value_beats_default():
     assert resolved["seed"] == 99
 
 
-def test_resolve_casts_types():
+def test_resolve_casts_type_list():
     runner = Runner(
         command="echo",
         params=[
-            Param("image", types=["path", "int", "float"]),
+            Param("image", type=["path", "int", "float"]),
         ],
     )
     resolved = runner._resolve_values(
@@ -257,7 +354,7 @@ def test_resolve_casts_default_list():
         params=[
             Param(
                 "image",
-                types=["path", "float", "float"],
+                type=["path", "float", "float"],
                 default=["img.jpg", "0", "0.8"],
             ),
         ],
@@ -300,13 +397,13 @@ def test_interactive_select_for_choices():
     assert resolved["mode"] == "fast"
 
 
-def test_interactive_types_prompts_each_part():
+def test_interactive_type_list_prompts_each_part():
     runner = Runner(
         command="echo",
         params=[
             Param(
                 "image",
-                types=["path", "float", "float"],
+                type=["path-image", "float", "float"],
                 labels=["path", "start", "strength"],
             ),
         ],
@@ -319,6 +416,17 @@ def test_interactive_types_prompts_each_part():
         runner._prompt_missing(resolved, interactive=True)
     # After prompting, types are cast: str, float, float
     assert resolved["image"] == ["photo.jpg", 0.0, 0.8]
+
+
+def test_interactive_path_image_uses_path_widget():
+    """path-image type should use questionary.path() widget."""
+    runner = Runner(command="echo", params=[Param("img", type="path-image")])
+    resolved = {"img": None}
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
+        runner._prompt_missing(resolved, interactive=True)
+    mock_q.path.assert_called_once()
+    assert resolved["img"] == "/tmp/photo.jpg"
 
 
 def test_interactive_cancel_exits():
@@ -436,9 +544,9 @@ def test_build_command_string_with_quotes():
     assert runner._build_command({}) == ["python", "my script.py"]
 
 
-def test_build_types_from_cli():
+def test_build_type_list_from_cli():
     runner = Runner(
-        command="run.py", params=[Param("image", types=["path", "float", "float"])]
+        command="run.py", params=[Param("image", type=["path", "float", "float"])]
     )
     assert runner._build_command({"image": ["photo.jpg", 0.0, 0.8]}) == [
         "run.py",
@@ -537,7 +645,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
         params=[
             Param("prompt"),
             Param("seed", type="int", default=42),
-            Param("output-path", value="$output/video.mp4"),
+            Param("output-path", value="$output/video.mp4", type="path-video"),
         ],
     )
     with patch("sys.argv", ["prog", "--dry-run", "--prompt", "test", "-n"]):
@@ -561,8 +669,12 @@ def test_full_run_with_mocked_wandb(tmp_path):
     mock_wb.Artifact = MagicMock()
 
     runner = Runner(
-        command=f"{sys.executable} -c \"import sys; print('hello'); print('err', file=sys.stderr)\"",
-        params=[Param("output-path", value="$output/video.mp4")],
+        command=(
+            f"{sys.executable} -c"
+            " \"import sys; print('hello');"
+            " print('err', file=sys.stderr)\""
+        ),
+        params=[Param("output-path", value="$output/video.mp4", type="path-video")],
         metrics=[Metric("val", pattern=r"no-match")],
     )
 
@@ -578,11 +690,153 @@ def test_full_run_with_mocked_wandb(tmp_path):
     mock_wb.init.assert_called_once()
     assert mock_wb.init.call_args[1]["project"] == "test-repo"
     assert mock_wb.init.call_args[1]["save_code"] is True
+    assert "group" in mock_wb.init.call_args[1]
+    assert mock_wb.init.call_args[1]["group"].startswith("sweep-")
     assert wb_run.summary["status"] == "success"
     assert wb_run.summary["exit_code"] == 0
     assert wb_run.summary["duration_seconds"] > 0
     assert (tmp_path / "genai_runs" / "test-repo").exists()
     wb_run.finish.assert_called_once_with(exit_code=0)
+
+
+def test_full_run_explicit_group(tmp_path):
+    mock_wb = MagicMock()
+    wb_run = _mock_wb_run()
+    mock_wb.init.return_value = wb_run
+    mock_wb.Artifact = MagicMock()
+
+    runner = Runner(
+        command=f"{sys.executable} -c \"print('ok')\"",
+        params=[],
+        group="my-sweep",
+    )
+
+    with (
+        patch("sys.argv", ["prog", "-n"]),
+        patch("genai_runner.wandb", mock_wb),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._save_code_snapshot"),
+        patch("genai_runner.Path.home", return_value=tmp_path),
+    ):
+        runner.run()
+
+    assert mock_wb.init.call_args[1]["group"] == "my-sweep"
+
+
+# ---------------------------------------------------------------------------
+# count_logged with path-* types
+# ---------------------------------------------------------------------------
+
+
+def test_count_logged_path_video():
+    runner = Runner(
+        command="echo",
+        params=[
+            Param("out", value="$output/video.mp4", type="path-video"),
+            Param("img", type="path-image"),
+        ],
+        outputs=[Output("extra.mp4", log_as="video")],
+    )
+    assert runner._count_logged("video") == 2  # param + output
+    assert runner._count_logged("image") == 1
+
+
+def test_count_logged_type_list():
+    runner = Runner(
+        command="echo",
+        params=[Param("img", type=["path-image", "float", "float"])],
+    )
+    assert runner._count_logged("image") == 1
+
+
+# ---------------------------------------------------------------------------
+# Output glob + zip
+# ---------------------------------------------------------------------------
+
+
+def test_log_extra_outputs_glob(tmp_path):
+    """Glob pattern expands and uploads each matched file."""
+    (tmp_path / "frames").mkdir()
+    (tmp_path / "frames" / "001.png").write_text("a")
+    (tmp_path / "frames" / "002.png").write_text("b")
+    (tmp_path / "frames" / "skip.txt").write_text("c")
+
+    runner = Runner(
+        command="echo",
+        outputs=[Output("$output/frames/*.png", log_as="image")],
+    )
+    wb_run = _mock_wb_run()
+    with patch("genai_runner.wandb"):
+        runner._log_extra_outputs(wb_run, tmp_path)
+    # Should upload 2 png files, not the txt
+    assert wb_run.log.call_count == 2
+
+
+def test_log_extra_outputs_glob_zip(tmp_path):
+    """Glob + log_as='zip' creates a zip archive."""
+    (tmp_path / "debug").mkdir()
+    (tmp_path / "debug" / "a.pt").write_text("tensor1")
+    (tmp_path / "debug" / "b.pt").write_text("tensor2")
+
+    runner = Runner(
+        command="echo",
+        outputs=[Output("$output/debug/*.pt", log_as="zip")],
+    )
+    wb_run = _mock_wb_run()
+    with patch("genai_runner.wandb"):
+        runner._log_extra_outputs(wb_run, tmp_path)
+
+    # Check zip was created
+    zip_path = tmp_path / "debug.zip"
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path) as zf:
+        assert sorted(zf.namelist()) == ["a.pt", "b.pt"]
+
+
+def test_log_extra_outputs_dir_zip(tmp_path):
+    """Directory with log_as='zip' zips entire directory."""
+    (tmp_path / "debug").mkdir()
+    (tmp_path / "debug" / "a.pt").write_text("tensor1")
+    (tmp_path / "debug" / "sub").mkdir()
+    (tmp_path / "debug" / "sub" / "b.pt").write_text("tensor2")
+
+    runner = Runner(
+        command="echo",
+        outputs=[Output("$output/debug", log_as="zip")],
+    )
+    wb_run = _mock_wb_run()
+    runner._log_extra_outputs(wb_run, tmp_path)
+
+    zip_path = tmp_path / "debug.zip"
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path) as zf:
+        names = sorted(zf.namelist())
+        assert "a.pt" in names
+        assert "sub/b.pt" in names
+
+
+def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
+    """Glob with no matches prints a warning."""
+    runner = Runner(
+        command="echo",
+        outputs=[Output("$output/nope/*.png", log_as="image")],
+    )
+    wb_run = _mock_wb_run()
+    runner._log_extra_outputs(wb_run, tmp_path)
+    assert "matched no files" in capsys.readouterr().out
+
+
+def test_log_extra_outputs_single_file(tmp_path):
+    """Non-glob single file still works (regression)."""
+    (tmp_path / "meta.json").write_text("{}")
+
+    runner = Runner(
+        command="echo",
+        outputs=[Output("$output/meta.json", log_as="artifact")],
+    )
+    wb_run = _mock_wb_run()
+    runner._log_extra_outputs(wb_run, tmp_path)
+    wb_run.log_artifact.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
