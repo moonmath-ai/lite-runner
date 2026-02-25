@@ -300,7 +300,7 @@ class Runner:
             (
                 "log output files",
                 lambda: self._log_files(wb_run, param_values, when="after"),
-            ),  # noqa: E501
+            ),
             ("log extra outputs", lambda: self._log_extra_outputs(wb_run, output_dir)),
             ("log run logs", lambda: self._log_run_logs(wb_run, output_dir)),
             ("tag failed run", lambda: _tag_failed(wb_run, exit_code, run_tags)),
