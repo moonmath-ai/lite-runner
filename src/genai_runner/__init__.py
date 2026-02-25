@@ -1,4 +1,4 @@
-"""genai_runner — Experiment runner for video diffusion models with W&B tracking."""
+"""genai_runner -- Experiment runner for video diffusion models with W&B tracking."""
 
 from __future__ import annotations
 
@@ -16,14 +16,19 @@ import time
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import questionary
 import wandb
+
+# Mapping from Param.type strings to Python types for argparse.
+_PARAM_TYPE_MAP: dict[str, type] = {"int": int, "float": float, "str": str, "path": str}
 
 
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Param:
@@ -44,26 +49,29 @@ class Param:
 
     name: str
     type: str = "str"
-    default: object = None
+    default: Any = None
     choices: list[str] | None = None
     help: str = ""
     flag: str | None = None
-    value: object = None
+    value: Any = None
     hidden: bool = False
     log_as: str | None = None
     log_when: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self._dest = self.name.replace("-", "_")
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
-        # Auto-infer log_when from whether $output appears in value
         if self.log_when is None and self.log_as is not None:
-            if isinstance(self.value, list):
-                val_str = " ".join(str(v) for v in self.value)
-            else:
-                val_str = str(self.value) if self.value is not None else ""
-            self.log_when = "after" if "$output" in val_str else "before"
+            self.log_when = "after" if self._value_contains_output() else "before"
+
+    def _value_contains_output(self) -> bool:
+        """Check whether $output appears anywhere in self.value."""
+        if self.value is None:
+            return False
+        if isinstance(self.value, list):
+            return any("$output" in str(v) for v in self.value)
+        return "$output" in str(self.value)
 
     @property
     def dest(self) -> str:
@@ -123,7 +131,7 @@ class Runner:
     env: dict[str, str] = field(default_factory=dict)
     wandb_project: str | None = None  # default: git repo name
 
-    def run(self, overrides: dict[str, object] | None = None):
+    def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         if not hasattr(self, "_cli_args"):
             self._cli_args = self._parse_cli_args()
@@ -213,13 +221,8 @@ class Runner:
             wb_run.log_artifact(artifact)
 
         # Count outputs for summary
-        def count_logged(media_type: str) -> int:
-            from_params = sum(1 for p in self.params if p.log_as == media_type and p.log_when == "after")
-            from_outputs = sum(1 for o in self.outputs if o.log_as == media_type)
-            return from_params + from_outputs
-
-        num_videos = count_logged("video")
-        num_images = count_logged("image")
+        num_videos = self._count_logged("video")
+        num_images = self._count_logged("image")
 
         # Finalize
         failed = exit_code != 0
@@ -262,8 +265,6 @@ class Runner:
         parser.add_argument("--run-name", default=None, help="Override W&B run name")
         parser.add_argument("--wandb-project", default=None, help="Override W&B project name")
 
-        # User params (only non-fixed ones get CLI flags)
-        _type_map = {"int": int, "float": float, "str": str, "path": str}
         for p in self.params:
             if p.is_fixed:
                 continue
@@ -274,7 +275,7 @@ class Runner:
             if p.type == "bool":
                 kwargs.update(action="store_true", default=False)
             else:
-                kwargs["type"] = _type_map.get(p.type, str)
+                kwargs["type"] = _PARAM_TYPE_MAP.get(p.type, str)
             if p.choices:
                 kwargs["choices"] = p.choices
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
@@ -314,7 +315,7 @@ class Runner:
     # Interactive prompts
     # -----------------------------------------------------------------------
 
-    def _prompt_missing(self, resolved: dict, interactive: bool):
+    def _prompt_missing(self, resolved: dict, interactive: bool) -> None:
         missing = [
             p for p in self.params
             if not p.is_fixed and p.type != "bool" and resolved.get(p.dest) is None
@@ -342,7 +343,6 @@ class Runner:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
 
-            # Cast
             if p.type == "int":
                 answer = int(answer)
             elif p.type == "float":
@@ -411,7 +411,7 @@ class Runner:
                 env=run_env,
             )
 
-            def stream_pipe(pipe, sys_stream, file_log, prefix=""):
+            def stream_pipe(pipe, sys_stream, file_log, *, prefix="", capture=False):
                 for raw_line in iter(pipe.readline, b""):
                     line = raw_line.decode("utf-8", errors="replace")
                     sys_stream.write(line)
@@ -421,12 +421,20 @@ class Runner:
                     with lock:
                         log_combined.write(prefix + line)
                         log_combined.flush()
-                        if not prefix:
+                        if capture:
                             stdout_lines.append(line)
                 pipe.close()
 
-            t_out = threading.Thread(target=stream_pipe, args=(proc.stdout, sys.stdout, log_stdout))
-            t_err = threading.Thread(target=stream_pipe, args=(proc.stderr, sys.stderr, log_stderr, "[stderr] "))
+            t_out = threading.Thread(
+                target=stream_pipe,
+                args=(proc.stdout, sys.stdout, log_stdout),
+                kwargs={"capture": True},
+            )
+            t_err = threading.Thread(
+                target=stream_pipe,
+                args=(proc.stderr, sys.stderr, log_stderr),
+                kwargs={"prefix": "[stderr] "},
+            )
 
             start = time.monotonic()
             t_out.start()
@@ -453,7 +461,7 @@ class Runner:
     # File logging to W&B
     # -----------------------------------------------------------------------
 
-    def _log_files(self, wb_run, param_values: dict, output_dir: Path, when: str):
+    def _log_files(self, wb_run, param_values: dict, output_dir: Path, when: str) -> None:
         for p in self.params:
             if p.log_as is None or p.log_when != when:
                 continue
@@ -469,8 +477,10 @@ class Runner:
                 continue
             _upload_file(wb_run, path, p.log_as, label=p.name)
 
-    def _log_extra_outputs(self, wb_run, output_dir: Path):
-        interpolate = lambda s: s.replace("$output", str(output_dir))
+    def _log_extra_outputs(self, wb_run, output_dir: Path) -> None:
+        def interpolate(s: str) -> str:
+            return s.replace("$output", str(output_dir))
+
         for o in self.outputs:
             src = Path(interpolate(o.path))
             if not src.exists():
@@ -487,7 +497,7 @@ class Runner:
     # Metric extraction
     # -----------------------------------------------------------------------
 
-    def _extract_metrics(self, wb_run, stdout_text: str):
+    def _extract_metrics(self, wb_run, stdout_text: str) -> None:
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
             if not matches:
@@ -495,19 +505,25 @@ class Runner:
             raw = matches[-1]  # last match wins
             if m.type == "float":
                 try:
-                    val = float(raw)
+                    val: object = float(raw)
                 except ValueError:
                     val = raw
             else:
                 val = raw
             wb_run.summary[m.name] = val
 
+    def _count_logged(self, media_type: str) -> int:
+        """Count params and outputs that log as the given media type."""
+        from_params = sum(1 for p in self.params if p.log_as == media_type and p.log_when == "after")
+        from_outputs = sum(1 for o in self.outputs if o.log_as == media_type)
+        return from_params + from_outputs
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None):
+def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> None:
     key = label or path.stem
     try:
         if log_as == "video":
@@ -542,7 +558,7 @@ def _collect_git_info() -> dict:
         return {}
 
 
-def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict):
+def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict) -> None:
     """Save a full code snapshot: git archive + dirty diff."""
     if not git_info:
         return
