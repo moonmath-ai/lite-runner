@@ -378,6 +378,7 @@ class Runner:
                         )
             if p.choices:
                 kwargs["choices"] = p.choices
+            assert p.flag is not None
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
 
         ns = parser.parse_args()
@@ -464,6 +465,7 @@ class Runner:
         return caster(answer)
 
     def _prompt_nargs(self, p: Param) -> list:
+        assert p.nargs is not None
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
         element_types = p.types or [p._primary_type] * p.nargs
         parts = []
@@ -515,6 +517,7 @@ class Runner:
             val = param_values.get(p.dest)
             if val is None or (p._primary_type == "bool" and not val):
                 continue
+            assert p.flag is not None
             if p._primary_type == "bool":
                 parts.append(p.flag)
             elif isinstance(val, list):
@@ -546,7 +549,9 @@ class Runner:
                 env=run_env,
             )
 
-            def stream_pipe(pipe, sys_stream, file_log, *, prefix="", capture=False) -> None:
+            def stream_pipe(
+                pipe, sys_stream, file_log, *, prefix="", capture=False
+            ) -> None:
                 for raw_line in iter(pipe.readline, b""):
                     line = raw_line.decode("utf-8", errors="replace")
                     sys_stream.write(line)
