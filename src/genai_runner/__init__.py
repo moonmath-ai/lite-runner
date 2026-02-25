@@ -367,7 +367,7 @@ class Runner:
                 "default": None,
                 "help": argparse.SUPPRESS if p.hidden else (p.help or None),
             }
-            if p.type == "bool":
+            if p._primary_type == "bool":
                 kwargs.update(action="store_true", default=False)
             else:
                 kwargs["type"] = _PARAM_TYPE_MAP.get(p._primary_type, str)
@@ -425,7 +425,9 @@ class Runner:
         missing = [
             p
             for p in self.params
-            if not p.is_fixed and p.type != "bool" and resolved.get(p.dest) is None
+            if not p.is_fixed
+            and p._primary_type != "bool"
+            and resolved.get(p.dest) is None
         ]
 
         if not missing:
@@ -515,9 +517,9 @@ class Runner:
         )
         for p in self.params:
             val = param_values.get(p.dest)
-            if val is None or (p.type == "bool" and not val):
+            if val is None or (p._primary_type == "bool" and not val):
                 continue
-            if p.type == "bool":
+            if p._primary_type == "bool":
                 parts.append(p.flag)
             elif isinstance(val, list):
                 parts.append(p.flag)
@@ -619,6 +621,7 @@ class Runner:
 
     def _log_extra_outputs(self, wb_run, output_dir: Path) -> None:
         out = str(output_dir)
+        zip_counter = 0
         for o in self.outputs:
             raw_path = o.path.replace("$output", out)
             is_glob = any(c in raw_path for c in ("*", "?", "["))
@@ -635,7 +638,9 @@ class Runner:
 
                 if o.log_as == "zip":
                     zip_name = base.name or "output"
-                    zip_path = output_dir / f"{zip_name}.zip"
+                    suffix = f"_{zip_counter}" if zip_counter else ""
+                    zip_path = output_dir / f"{zip_name}{suffix}.zip"
+                    zip_counter += 1
                     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                         for m in matches:
                             if m.is_file():
@@ -649,7 +654,9 @@ class Runner:
             elif Path(raw_path).is_dir():
                 if o.log_as == "zip":
                     src = Path(raw_path)
-                    zip_path = output_dir / f"{src.name}.zip"
+                    suffix = f"_{zip_counter}" if zip_counter else ""
+                    zip_path = output_dir / f"{src.name}{suffix}.zip"
+                    zip_counter += 1
                     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                         for f in sorted(src.rglob("*")):
                             if f.is_file():
