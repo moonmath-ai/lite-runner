@@ -15,7 +15,12 @@ from genai_runner import Metric, Output, Param, Runner, _collect_git_info
 
 _BUILTIN_FLAGS = {"_dry_run": False, "_no_interactive": True, "_keep_outputs": False}
 
-_FAKE_GIT_INFO = {"repo": "test-repo", "commit": "abc", "branch": "main", "dirty": False}
+_FAKE_GIT_INFO = {
+    "repo": "test-repo",
+    "commit": "abc",
+    "branch": "main",
+    "dirty": False,
+}
 
 
 def _mock_wb_run(**overrides) -> MagicMock:
@@ -34,12 +39,15 @@ def _mock_wb_run(**overrides) -> MagicMock:
 
 
 def _make_runner(params=None, **kwargs):
-    return Runner(command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs)
+    return Runner(
+        command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
+    )
 
 
 # ---------------------------------------------------------------------------
 # Param
 # ---------------------------------------------------------------------------
+
 
 def test_param_dest_normalizes_hyphens():
     assert Param("debug-output").dest == "debug_output"
@@ -90,11 +98,17 @@ def test_param_log_when_inferred_before():
 
 
 def test_param_log_when_explicit_overrides():
-    assert Param("out", value="$output/x.mp4", log_as="video", log_when="before").log_when == "before"
+    assert (
+        Param("out", value="$output/x.mp4", log_as="video", log_when="before").log_when
+        == "before"
+    )
 
 
 def test_param_log_when_list_value():
-    assert Param("img", value=["$output/img.jpg", "0", "0.8"], log_as="image").log_when == "after"
+    assert (
+        Param("img", value=["$output/img.jpg", "0", "0.8"], log_as="image").log_when
+        == "after"
+    )
 
 
 def test_param_log_when_none_without_log_as():
@@ -102,7 +116,9 @@ def test_param_log_when_none_without_log_as():
 
 
 def test_param_types_infers_nargs():
-    p = Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"])
+    p = Param(
+        "image", types=["path", "float", "float"], labels=["path", "start", "strength"]
+    )
     assert p.nargs == 3
     assert p.types == ["path", "float", "float"]
     assert p.labels == ["path", "start", "strength"]
@@ -115,6 +131,7 @@ def test_param_nargs_none_without_types():
 # ---------------------------------------------------------------------------
 # CLI parsing
 # ---------------------------------------------------------------------------
+
 
 def test_parse_basic_args():
     runner = _make_runner([Param("prompt"), Param("seed", type="int", default=42)])
@@ -137,7 +154,9 @@ def test_parse_bool_flag_absent():
 
 
 def test_fixed_params_not_in_argparse():
-    runner = _make_runner([Param("prompt"), Param("output-path", value="$output/video.mp4")])
+    runner = _make_runner(
+        [Param("prompt"), Param("output-path", value="$output/video.mp4")]
+    )
     with patch("sys.argv", ["prog", "--prompt", "hi"]):
         args = runner._parse_cli_args()
     assert "prompt" in args
@@ -151,7 +170,15 @@ def test_parse_choices():
 
 
 def test_parse_types():
-    runner = _make_runner([Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"])])
+    runner = _make_runner(
+        [
+            Param(
+                "image",
+                types=["path", "float", "float"],
+                labels=["path", "start", "strength"],
+            )
+        ]
+    )
     with patch("sys.argv", ["prog", "--image", "photo.jpg", "0", "0.8"]):
         args = runner._parse_cli_args()
     # argparse returns strings; casting happens in _resolve_values
@@ -160,7 +187,9 @@ def test_parse_types():
 
 def test_parse_types_with_spaces_in_path():
     runner = _make_runner([Param("image", types=["path", "float", "float"])])
-    with patch("sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]):
+    with patch(
+        "sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]
+    ):
         args = runner._parse_cli_args()
     assert args["image"] == ["path/to something/img.jpg", "0", "0.8"]
 
@@ -185,14 +214,19 @@ def test_wandb_project_override():
 # Resolve values
 # ---------------------------------------------------------------------------
 
+
 def test_overrides_take_priority():
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    resolved = runner._resolve_values({"seed": 99, **_BUILTIN_FLAGS}, overrides={"seed": 777})
+    resolved = runner._resolve_values(
+        {"seed": 99, **_BUILTIN_FLAGS}, overrides={"seed": 777}
+    )
     assert resolved["seed"] == 777
 
 
 def test_callable_default():
-    runner = Runner(command="echo", params=[Param("path", default=lambda: "/computed/path")])
+    runner = Runner(
+        command="echo", params=[Param("path", default=lambda: "/computed/path")]
+    )
     resolved = runner._resolve_values({"path": None, **_BUILTIN_FLAGS}, overrides={})
     assert resolved["path"] == "/computed/path"
 
@@ -204,19 +238,30 @@ def test_cli_value_beats_default():
 
 
 def test_resolve_casts_types():
-    runner = Runner(command="echo", params=[
-        Param("image", types=["path", "int", "float"]),
-    ])
+    runner = Runner(
+        command="echo",
+        params=[
+            Param("image", types=["path", "int", "float"]),
+        ],
+    )
     resolved = runner._resolve_values(
-        {"image": ["photo.jpg", "5", "0.8"], **_BUILTIN_FLAGS}, overrides={},
+        {"image": ["photo.jpg", "5", "0.8"], **_BUILTIN_FLAGS},
+        overrides={},
     )
     assert resolved["image"] == ["photo.jpg", 5, 0.8]
 
 
 def test_resolve_casts_default_list():
-    runner = Runner(command="echo", params=[
-        Param("image", types=["path", "float", "float"], default=["img.jpg", "0", "0.8"]),
-    ])
+    runner = Runner(
+        command="echo",
+        params=[
+            Param(
+                "image",
+                types=["path", "float", "float"],
+                default=["img.jpg", "0", "0.8"],
+            ),
+        ],
+    )
     resolved = runner._resolve_values({"image": None, **_BUILTIN_FLAGS}, overrides={})
     assert resolved["image"] == ["img.jpg", 0.0, 0.8]
 
@@ -224,6 +269,7 @@ def test_resolve_casts_default_list():
 # ---------------------------------------------------------------------------
 # Prompt missing
 # ---------------------------------------------------------------------------
+
 
 def test_no_interactive_exits_on_missing():
     runner = Runner(command="echo", params=[Param("prompt")])
@@ -255,9 +301,16 @@ def test_interactive_select_for_choices():
 
 
 def test_interactive_types_prompts_each_part():
-    runner = Runner(command="echo", params=[
-        Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"]),
-    ])
+    runner = Runner(
+        command="echo",
+        params=[
+            Param(
+                "image",
+                types=["path", "float", "float"],
+                labels=["path", "start", "strength"],
+            ),
+        ],
+    )
     resolved = {"image": None}
     answers = iter(["0", "0.8"])
     with patch("genai_runner.questionary") as mock_q:
@@ -280,6 +333,7 @@ def test_interactive_cancel_exits():
 # Interpolate output
 # ---------------------------------------------------------------------------
 
+
 def test_interpolate_replaces_output_in_string(tmp_path):
     runner = Runner(command="echo", params=[Param("out", value="$output/video.mp4")])
     result = runner._interpolate_output({}, tmp_path)
@@ -287,7 +341,9 @@ def test_interpolate_replaces_output_in_string(tmp_path):
 
 
 def test_interpolate_replaces_output_in_list(tmp_path):
-    runner = Runner(command="echo", params=[Param("img", value=["$output/img.jpg", "0", "0.8"])])
+    runner = Runner(
+        command="echo", params=[Param("img", value=["$output/img.jpg", "0", "0.8"])]
+    )
     result = runner._interpolate_output({}, tmp_path)
     assert result["img"] == [f"{tmp_path}/img.jpg", "0", "0.8"]
 
@@ -309,10 +365,19 @@ def test_interpolate_preserves_resolved_params(tmp_path):
 # Build command
 # ---------------------------------------------------------------------------
 
+
 def test_build_basic_command():
-    runner = Runner(command="python generate.py", params=[Param("prompt"), Param("seed", type="int")])
+    runner = Runner(
+        command="python generate.py",
+        params=[Param("prompt"), Param("seed", type="int")],
+    )
     assert runner._build_command({"prompt": "a cat", "seed": 42}) == [
-        "python", "generate.py", "--prompt", "a cat", "--seed", "42",
+        "python",
+        "generate.py",
+        "--prompt",
+        "a cat",
+        "--seed",
+        "42",
     ]
 
 
@@ -327,15 +392,27 @@ def test_build_bool_flag_false_omitted():
 
 
 def test_build_multi_value_flag():
-    runner = Runner(command="run.py", params=[Param("image", value=["photo.jpg", "0", "0.8"])])
+    runner = Runner(
+        command="run.py", params=[Param("image", value=["photo.jpg", "0", "0.8"])]
+    )
     assert runner._build_command({"image": ["photo.jpg", "0", "0.8"]}) == [
-        "run.py", "--image", "photo.jpg", "0", "0.8",
+        "run.py",
+        "--image",
+        "photo.jpg",
+        "0",
+        "0.8",
     ]
 
 
 def test_build_none_values_omitted():
-    runner = Runner(command="run.py", params=[Param("prompt"), Param("seed", type="int")])
-    assert runner._build_command({"prompt": "hi", "seed": None}) == ["run.py", "--prompt", "hi"]
+    runner = Runner(
+        command="run.py", params=[Param("prompt"), Param("seed", type="int")]
+    )
+    assert runner._build_command({"prompt": "hi", "seed": None}) == [
+        "run.py",
+        "--prompt",
+        "hi",
+    ]
 
 
 def test_build_custom_flag():
@@ -346,7 +423,11 @@ def test_build_custom_flag():
 def test_build_command_as_list():
     runner = Runner(command=["python", "-m", "my model"], params=[Param("prompt")])
     assert runner._build_command({"prompt": "a cat"}) == [
-        "python", "-m", "my model", "--prompt", "a cat",
+        "python",
+        "-m",
+        "my model",
+        "--prompt",
+        "a cat",
     ]
 
 
@@ -356,9 +437,15 @@ def test_build_command_string_with_quotes():
 
 
 def test_build_types_from_cli():
-    runner = Runner(command="run.py", params=[Param("image", types=["path", "float", "float"])])
+    runner = Runner(
+        command="run.py", params=[Param("image", types=["path", "float", "float"])]
+    )
     assert runner._build_command({"image": ["photo.jpg", 0.0, 0.8]}) == [
-        "run.py", "--image", "photo.jpg", "0.0", "0.8",
+        "run.py",
+        "--image",
+        "photo.jpg",
+        "0.0",
+        "0.8",
     ]
 
 
@@ -366,15 +453,20 @@ def test_build_types_from_cli():
 # Metric extraction
 # ---------------------------------------------------------------------------
 
+
 def test_metric_float():
-    runner = Runner(command="echo", metrics=[Metric("skip_pct", pattern=r"skipped=([\d.]+)%")])
+    runner = Runner(
+        command="echo", metrics=[Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
+    )
     wb_run = _mock_wb_run()
     runner._extract_metrics(wb_run, "some output\nskipped=32.8%\ndone")
     assert wb_run.summary["skip_pct"] == 32.8
 
 
 def test_metric_str():
-    runner = Runner(command="echo", metrics=[Metric("status", pattern=r"final: (\w+)", type="str")])
+    runner = Runner(
+        command="echo", metrics=[Metric("status", pattern=r"final: (\w+)", type="str")]
+    )
     wb_run = _mock_wb_run()
     runner._extract_metrics(wb_run, "final: completed")
     assert wb_run.summary["status"] == "completed"
@@ -398,9 +490,14 @@ def test_metric_no_match():
 # Execute subprocess
 # ---------------------------------------------------------------------------
 
+
 def test_execute_captures_stdout_and_stderr(tmp_path):
     runner = Runner(command="echo")
-    cmd = [sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr)"]
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys; print('out'); print('err', file=sys.stderr)",
+    ]
     exit_code, duration, stdout_text = runner._execute(cmd, tmp_path)
 
     assert exit_code == 0
@@ -415,7 +512,9 @@ def test_execute_captures_stdout_and_stderr(tmp_path):
 
 def test_execute_nonzero_exit_code(tmp_path):
     runner = Runner(command="echo")
-    exit_code, _, _ = runner._execute([sys.executable, "-c", "import sys; sys.exit(42)"], tmp_path)
+    exit_code, _, _ = runner._execute(
+        [sys.executable, "-c", "import sys; sys.exit(42)"], tmp_path
+    )
     assert exit_code == 42
 
 
@@ -430,6 +529,7 @@ def test_execute_env_vars_passed(tmp_path):
 # ---------------------------------------------------------------------------
 # Dry run (integration)
 # ---------------------------------------------------------------------------
+
 
 def test_dry_run_prints_command_no_wandb(capsys):
     runner = Runner(
@@ -452,6 +552,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
 # ---------------------------------------------------------------------------
 # Full run (integration with mocked W&B)
 # ---------------------------------------------------------------------------
+
 
 def test_full_run_with_mocked_wandb(tmp_path):
     mock_wb = MagicMock()
@@ -488,6 +589,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
 # Git info
 # ---------------------------------------------------------------------------
 
+
 def test_git_info_returns_expected_keys():
     outputs = [
         b"/home/user/genai-runner\n",
@@ -497,7 +599,12 @@ def test_git_info_returns_expected_keys():
     ]
     with patch("subprocess.check_output", side_effect=outputs):
         info = _collect_git_info()
-    assert info == {"repo": "genai-runner", "commit": "abc123def456", "branch": "main", "dirty": False}
+    assert info == {
+        "repo": "genai-runner",
+        "commit": "abc123def456",
+        "branch": "main",
+        "dirty": False,
+    }
 
 
 def test_git_info_dirty_flag():
@@ -512,5 +619,7 @@ def test_git_info_dirty_flag():
 
 
 def test_git_info_empty_outside_repo():
-    with patch("subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "git")):
+    with patch(
+        "subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "git")
+    ):
         assert _collect_git_info() == {}

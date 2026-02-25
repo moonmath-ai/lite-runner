@@ -15,7 +15,9 @@ def main():
     parser.add_argument("--prompt", required=True, help="Text prompt")
     parser.add_argument("--output-path", required=True, help="Output video path")
     parser.add_argument("--debug-output", default=None, help="Debug artifact path")
-    parser.add_argument("--image", nargs="+", default=None, help="Input image path + optional args")
+    parser.add_argument(
+        "--image", nargs="+", default=None, help="Input image path + optional args"
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--threshold", type=float, default=-3.2)
     parser.add_argument("--mode", choices=["calib", "fast", "quality"], default="calib")
@@ -23,7 +25,9 @@ def main():
     args = parser.parse_args()
 
     print(f"[fake_model] prompt={args.prompt!r}")
-    print(f"[fake_model] seed={args.seed}, threshold={args.threshold}, mode={args.mode}")
+    print(
+        f"[fake_model] seed={args.seed}, threshold={args.threshold}, mode={args.mode}"
+    )
     if args.image:
         print(f"[fake_model] image={args.image}")
 

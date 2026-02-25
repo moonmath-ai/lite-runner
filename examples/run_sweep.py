@@ -11,8 +11,12 @@ runner = Runner(
     params=[
         Param("prompt", help="Text prompt for generation"),
         Param("threshold", type="float", default=-3.2, help="Attention threshold"),
-        Param("mode", choices=["calib", "fast", "quality"], default="calib",
-              help="Generation mode"),
+        Param(
+            "mode",
+            choices=["calib", "fast", "quality"],
+            default="calib",
+            help="Generation mode",
+        ),
         Param("seed", type="int", default=42, help="Random seed"),
         Param("output-path", value="$output/video.mp4", log_as="video"),
     ],

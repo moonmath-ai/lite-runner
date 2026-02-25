@@ -130,6 +130,7 @@ class Metric:
 # Runner
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Runner:
     command: str | list[str]
@@ -158,7 +159,9 @@ class Runner:
 
         # Dry-run: show command without W&B or output dir
         if dry_run:
-            param_values = self._interpolate_output(resolved, Path("/tmp/dry-run-output"))
+            param_values = self._interpolate_output(
+                resolved, Path("/tmp/dry-run-output")
+            )
             cmd = self._build_command(param_values)
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
@@ -176,11 +179,17 @@ class Runner:
             tags=run_tags,
             save_code=True,
             config={
-                **{f"param/{k}": v for k, v in resolved.items() if not k.startswith("_")},
+                **{
+                    f"param/{k}": v
+                    for k, v in resolved.items()
+                    if not k.startswith("_")
+                },
                 **{f"git/{k}": v for k, v in git_info.items()},
                 "meta/hostname": os.uname().nodename,
                 "meta/datetime": datetime.datetime.now().isoformat(),
-                "meta/command": shlex.join(self.command) if isinstance(self.command, list) else self.command,
+                "meta/command": shlex.join(self.command)
+                if isinstance(self.command, list)
+                else self.command,
             },
         )
 
@@ -240,14 +249,16 @@ class Runner:
         status = "failed" if exit_code != 0 else "success"
         if exit_code != 0:
             wb_run.tags = [*run_tags, "failed"]
-        wb_run.summary.update({
-            "exit_code": exit_code,
-            "duration_seconds": duration,
-            "status": status,
-            "num_videos": num_videos,
-            "num_images": num_images,
-            "output_dir": str(output_dir),
-        })
+        wb_run.summary.update(
+            {
+                "exit_code": exit_code,
+                "duration_seconds": duration,
+                "status": status,
+                "num_videos": num_videos,
+                "num_images": num_images,
+                "output_dir": str(output_dir),
+            }
+        )
         wb_run.finish(exit_code=exit_code)
 
         print("=" * 60)
@@ -256,7 +267,9 @@ class Runner:
         print(f"Output dir: {output_dir}")
 
         if not keep_outputs:
-            print(f"(use --keep-outputs to preserve local files, or delete with: rm -rf '{output_dir}')")
+            print(
+                f"(use --keep-outputs to preserve local files, or delete with: rm -rf '{output_dir}')"
+            )
 
     # -----------------------------------------------------------------------
     # CLI parsing
@@ -268,13 +281,24 @@ class Runner:
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         # Built-in flags
-        parser.add_argument("--dry-run", action="store_true", help="Print command and exit")
-        parser.add_argument("-n", "--no-interactive", action="store_true",
-                            help="Non-interactive mode; fail if required params are missing")
-        parser.add_argument("--keep-outputs", action="store_true",
-                            help="Keep local output directory (always kept, flag is a no-op reminder)")
+        parser.add_argument(
+            "--dry-run", action="store_true", help="Print command and exit"
+        )
+        parser.add_argument(
+            "-n",
+            "--no-interactive",
+            action="store_true",
+            help="Non-interactive mode; fail if required params are missing",
+        )
+        parser.add_argument(
+            "--keep-outputs",
+            action="store_true",
+            help="Keep local output directory (always kept, flag is a no-op reminder)",
+        )
         parser.add_argument("--run-name", default=None, help="Override W&B run name")
-        parser.add_argument("--wandb-project", default=None, help="Override W&B project name")
+        parser.add_argument(
+            "--wandb-project", default=None, help="Override W&B project name"
+        )
 
         for p in self.params:
             if p.is_fixed:
@@ -293,13 +317,17 @@ class Runner:
                     kwargs["type"] = str
                     if p.labels and not p.hidden:
                         kwargs["metavar"] = tuple(p.labels)
-                        kwargs["help"] = f"{p.help or ''} ({' '.join(p.labels)})".strip()
+                        kwargs["help"] = (
+                            f"{p.help or ''} ({' '.join(p.labels)})".strip()
+                        )
             if p.choices:
                 kwargs["choices"] = p.choices
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
 
         ns = parser.parse_args()
-        result = {p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed}
+        result = {
+            p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
+        }
         result["_dry_run"] = ns.dry_run
         result["_no_interactive"] = ns.no_interactive
         result["_keep_outputs"] = ns.keep_outputs
@@ -335,7 +363,8 @@ class Runner:
 
     def _prompt_missing(self, resolved: dict, interactive: bool) -> None:
         missing = [
-            p for p in self.params
+            p
+            for p in self.params
             if not p.is_fixed and p.type != "bool" and resolved.get(p.dest) is None
         ]
 
@@ -344,8 +373,13 @@ class Runner:
 
         if not interactive:
             names = [p.name for p in missing]
-            print(f"Error: missing required params: {', '.join(names)}", file=sys.stderr)
-            print("Run without -n for interactive mode, or pass them on the command line.", file=sys.stderr)
+            print(
+                f"Error: missing required params: {', '.join(names)}", file=sys.stderr
+            )
+            print(
+                "Run without -n for interactive mode, or pass them on the command line.",
+                file=sys.stderr,
+            )
             sys.exit(2)
 
         for p in missing:
@@ -413,7 +447,11 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _build_command(self, param_values: dict) -> list[str]:
-        parts = list(self.command) if isinstance(self.command, list) else shlex.split(self.command)
+        parts = (
+            list(self.command)
+            if isinstance(self.command, list)
+            else shlex.split(self.command)
+        )
         for p in self.params:
             val = param_values.get(p.dest)
             if val is None or (p.type == "bool" and not val):
@@ -499,7 +537,9 @@ class Runner:
     # File logging to W&B
     # -----------------------------------------------------------------------
 
-    def _log_files(self, wb_run, param_values: dict, output_dir: Path, when: str) -> None:
+    def _log_files(
+        self, wb_run, param_values: dict, output_dir: Path, when: str
+    ) -> None:
         for p in self.params:
             if p.log_as is None or p.log_when != when:
                 continue
@@ -549,15 +589,15 @@ class Runner:
 
     def _count_logged(self, media_type: str) -> int:
         """Count params and outputs that log as the given media type."""
-        return (
-            sum(1 for p in self.params if p.log_as == media_type)
-            + sum(1 for o in self.outputs if o.log_as == media_type)
+        return sum(1 for p in self.params if p.log_as == media_type) + sum(
+            1 for o in self.outputs if o.log_as == media_type
         )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _cast_nargs(values: list, types: list[str]) -> list:
     """Cast each element in *values* according to the corresponding type string."""
@@ -586,9 +626,11 @@ def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> N
 
 def _collect_git_info() -> dict:
     def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", *args], stderr=subprocess.DEVNULL
-        ).decode().strip()
+        return (
+            subprocess.check_output(["git", *args], stderr=subprocess.DEVNULL)
+            .decode()
+            .strip()
+        )
 
     try:
         return {
@@ -611,7 +653,9 @@ def _save_code_snapshot(wb_run, output_dir: Path, git_info: dict) -> None:
 
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["git", *args], capture_output=True, timeout=30,
+            ["git", *args],
+            capture_output=True,
+            timeout=30,
         )
 
     # git archive: full snapshot of tracked files at HEAD

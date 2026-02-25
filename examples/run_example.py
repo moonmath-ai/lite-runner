@@ -13,21 +13,32 @@ runner = Runner(
     command="python examples/fake_model.py",
     params=[
         Param("prompt", help="Text prompt for generation"),
-        Param("image", help="Input image",
-              types=["path", "float", "float"],
-              labels=["path", "start_frame", "strength"],
-              default=["examples/fake_input.jpg", "0", "0.8"],
-              log_as="image"),
+        Param(
+            "image",
+            help="Input image",
+            types=["path", "float", "float"],
+            labels=["path", "start_frame", "strength"],
+            default=["examples/fake_input.jpg", "0", "0.8"],
+            log_as="image",
+        ),
         Param("threshold", type="float", default=-3.2, help="Attention threshold"),
-        Param("mode", choices=["calib", "fast", "quality"], default="calib",
-              help="Generation mode"),
+        Param(
+            "mode",
+            choices=["calib", "fast", "quality"],
+            default="calib",
+            help="Generation mode",
+        ),
         Param("seed", type="int", default=42, help="Random seed"),
         Param("output-path", value="$output/video.mp4", log_as="video"),
         Param("debug-output", value="$output/debug.pt", log_as="artifact"),
     ],
     outputs=[
         # Uncontrolled output: fake_model writes model_metadata.json to cwd
-        Output("model_metadata.json", log_as="artifact", copy_to="$output/model_metadata.json"),
+        Output(
+            "model_metadata.json",
+            log_as="artifact",
+            copy_to="$output/model_metadata.json",
+        ),
     ],
     metrics=[
         Metric("skipped_pct", pattern=r"skipped=([\d.]+)%"),
