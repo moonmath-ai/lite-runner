@@ -97,6 +97,12 @@ def test_param_log_when_none_without_log_as():
     assert Param("prompt").log_when is None
 
 
+def test_param_nargs_stored():
+    p = Param("image", nargs=3, labels=["path", "start", "strength"])
+    assert p.nargs == 3
+    assert p.labels == ["path", "start", "strength"]
+
+
 # ---------------------------------------------------------------------------
 # CLI parsing
 # ---------------------------------------------------------------------------
@@ -133,6 +139,20 @@ def test_parse_choices():
     runner = _make_runner([Param("mode", choices=["fast", "quality"], default="fast")])
     with patch("sys.argv", ["prog", "--mode", "quality"]):
         assert runner._parse_cli_args()["mode"] == "quality"
+
+
+def test_parse_nargs():
+    runner = _make_runner([Param("image", nargs=3, labels=["path", "start", "strength"])])
+    with patch("sys.argv", ["prog", "--image", "photo.jpg", "0", "0.8"]):
+        args = runner._parse_cli_args()
+    assert args["image"] == ["photo.jpg", "0", "0.8"]
+
+
+def test_parse_nargs_with_spaces_in_path():
+    runner = _make_runner([Param("image", nargs=3)])
+    with patch("sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]):
+        args = runner._parse_cli_args()
+    assert args["image"] == ["path/to something/img.jpg", "0", "0.8"]
 
 
 def test_builtin_flags():
@@ -204,6 +224,19 @@ def test_interactive_select_for_choices():
         mock_q.select.return_value.ask.return_value = "fast"
         runner._prompt_missing(resolved, interactive=True)
     assert resolved["mode"] == "fast"
+
+
+def test_interactive_nargs_prompts_each_part():
+    runner = Runner(command="echo", params=[
+        Param("image", nargs=3, labels=["path", "start", "strength"]),
+    ])
+    resolved = {"image": None}
+    answers = iter(["photo.jpg", "0", "0.8"])
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = "photo.jpg"
+        mock_q.text.return_value.ask.side_effect = lambda: next(answers)
+        runner._prompt_missing(resolved, interactive=True)
+    assert resolved["image"] == ["photo.jpg", "0", "0.8"]
 
 
 def test_interactive_cancel_exits():
@@ -279,6 +312,13 @@ def test_build_none_values_omitted():
 def test_build_custom_flag():
     runner = Runner(command="run.py", params=[Param("out", flag="-o")])
     assert runner._build_command({"out": "/tmp/x"}) == ["run.py", "-o", "/tmp/x"]
+
+
+def test_build_nargs_from_cli():
+    runner = Runner(command="run.py", params=[Param("image", nargs=3)])
+    assert runner._build_command({"image": ["photo.jpg", "0", "0.8"]}) == [
+        "run.py", "--image", "photo.jpg", "0", "0.8",
+    ]
 
 
 # ---------------------------------------------------------------------------

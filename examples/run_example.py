@@ -14,7 +14,8 @@ runner = Runner(
     params=[
         Param("prompt", help="Text prompt for generation"),
         Param("image", type="path", help="Input image",
-              value=["examples/fake_input.jpg", "0", "0.8"],
+              nargs=3, labels=["path", "start_frame", "strength"],
+              default=["examples/fake_input.jpg", "0", "0.8"],
               log_as="image"),
         Param("threshold", type="float", default=-3.2, help="Attention threshold"),
         Param("mode", choices=["calib", "fast", "quality"], default="calib",

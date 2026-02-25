@@ -42,6 +42,10 @@ class Param:
         help: Description shown in --help and TUI prompt.
         flag: Override the CLI flag (default: --<name with hyphens>).
         value: Fixed value with $output interpolation. Never prompted.  Can be a list for multi-value flags.
+        nargs: Number of values this flag consumes.  Result is always a list.
+            Use with labels= to name each part for the TUI.
+        labels: Names for each nargs part, used in TUI prompts and --help.
+            e.g. labels=["path", "start_frame", "strength"] prompts separately for each.
         hidden: If True, not shown in --help.
         log_as: If set, upload the file to W&B. One of "video", "image", "artifact", "text".
         log_when: "before" (input file) or "after" (output file).  Auto-inferred from $output in value.
@@ -54,6 +58,8 @@ class Param:
     help: str = ""
     flag: str | None = None
     value: Any = None
+    nargs: int | None = None
+    labels: list[str] | None = None
     hidden: bool = False
     log_as: str | None = None
     log_when: str | None = None
@@ -276,6 +282,12 @@ class Runner:
                 kwargs.update(action="store_true", default=False)
             else:
                 kwargs["type"] = _PARAM_TYPE_MAP.get(p.type, str)
+                if p.nargs is not None:
+                    kwargs["nargs"] = p.nargs
+                    if p.labels and not p.hidden:
+                        label_str = " ".join(p.labels)
+                        kwargs["metavar"] = tuple(p.labels)
+                        kwargs["help"] = f"{p.help or ''} ({label_str})".strip()
             if p.choices:
                 kwargs["choices"] = p.choices
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
@@ -331,23 +343,43 @@ class Runner:
             sys.exit(2)
 
         for p in missing:
-            label = p.help or p.name
-            if p.choices:
-                answer = questionary.select(f"{label}:", choices=p.choices).ask()
-            elif p.type == "path":
-                answer = questionary.path(f"{label}:").ask()
+            if p.nargs is not None:
+                resolved[p.dest] = self._prompt_nargs(p)
             else:
-                answer = questionary.text(f"{label}:").ask()
+                resolved[p.dest] = self._prompt_single(p)
 
+    def _prompt_single(self, p: Param) -> Any:
+        label = p.help or p.name
+        if p.choices:
+            answer = questionary.select(f"{label}:", choices=p.choices).ask()
+        elif p.type == "path":
+            answer = questionary.path(f"{label}:").ask()
+        else:
+            answer = questionary.text(f"{label}:").ask()
+
+        if answer is None:
+            print("Cancelled.", file=sys.stderr)
+            sys.exit(1)
+
+        if p.type == "int":
+            answer = int(answer)
+        elif p.type == "float":
+            answer = float(answer)
+        return answer
+
+    def _prompt_nargs(self, p: Param) -> list:
+        labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
+        parts = []
+        for label in labels:
+            if p.type == "path" and len(parts) == 0:
+                answer = questionary.path(f"{p.name} {label}:").ask()
+            else:
+                answer = questionary.text(f"{p.name} {label}:").ask()
             if answer is None:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
-
-            if p.type == "int":
-                answer = int(answer)
-            elif p.type == "float":
-                answer = float(answer)
-            resolved[p.dest] = answer
+            parts.append(answer)
+        return parts
 
     # -----------------------------------------------------------------------
     # $output interpolation
