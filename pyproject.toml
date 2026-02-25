@@ -1,0 +1,22 @@
+[project]
+name = "genai-runner"
+version = "0.1.0"
+description = "Experiment runner for video diffusion models with W&B tracking"
+requires-python = ">=3.11"
+dependencies = [
+    "wandb",
+    "questionary",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/genai_runner"]
+
+[tool.pytest]
+testpaths = ["tests"]

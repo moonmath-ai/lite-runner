@@ -1,14 +1,11 @@
 # /// script
-# dependencies = ["wandb", "questionary", "pillow"]
 # requires-python = ">=3.11"
 # ///
+#
+# In a real project, your run_config.py would have:
+#   dependencies = ["genai-runner @ git+https://github.com/YOU/genai-runner"]
+# For these examples, run with: uv run --project .. examples/run_example.py
 """Example run config for the fake model."""
-
-import sys
-from pathlib import Path
-
-# Ensure genai_runner is importable (same parent dir)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from genai_runner import Metric, Output, Param, Runner
 

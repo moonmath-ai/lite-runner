@@ -1,13 +1,8 @@
 # /// script
-# dependencies = ["wandb", "questionary"]
 # requires-python = ">=3.11"
 # ///
+# Run with: uv run --project .. examples/run_sweep.py
 """Example sweep: same model, varying threshold and mode."""
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from genai_runner import Metric, Param, Runner
 
