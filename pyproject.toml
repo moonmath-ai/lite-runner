@@ -8,8 +8,8 @@ dependencies = [
     "questionary",
 ]
 
-[project.optional-dependencies]
-test = ["pytest"]
+[dependency-groups]
+dev = ["pytest"]
 
 [build-system]
 requires = ["hatchling"]
