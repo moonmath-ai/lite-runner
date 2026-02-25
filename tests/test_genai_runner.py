@@ -19,13 +19,17 @@ _FAKE_GIT_INFO = {"repo": "test-repo", "commit": "abc", "branch": "main", "dirty
 
 
 def _mock_wb_run(**overrides) -> MagicMock:
+    defaults = {
+        "summary": {},
+        "name": "test-run-42",
+        "id": "abc123",
+        "url": "https://wandb.test/run",
+        "tags": [],
+        "config": {},
+    }
     run = MagicMock()
-    run.summary = {}
-    run.name = overrides.get("name", "test-run-42")
-    run.id = overrides.get("id", "abc123")
-    run.url = overrides.get("url", "https://wandb.test/run")
-    run.tags = overrides.get("tags", [])
-    run.config = overrides.get("config", {})
+    for attr, value in {**defaults, **overrides}.items():
+        setattr(run, attr, value)
     return run
 
 
@@ -485,25 +489,25 @@ def test_full_run_with_mocked_wandb(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_git_info_returns_expected_keys():
-    outputs = iter([
+    outputs = [
         b"/home/user/genai-runner\n",
         b"abc123def456\n",
         b"main\n",
         b"",
-    ])
-    with patch("subprocess.check_output", side_effect=lambda *a, **kw: next(outputs)):
+    ]
+    with patch("subprocess.check_output", side_effect=outputs):
         info = _collect_git_info()
     assert info == {"repo": "genai-runner", "commit": "abc123def456", "branch": "main", "dirty": False}
 
 
 def test_git_info_dirty_flag():
-    outputs = iter([
+    outputs = [
         b"/home/user/genai-runner\n",
         b"abc123\n",
         b"main\n",
         b" M src/file.py\n",
-    ])
-    with patch("subprocess.check_output", side_effect=lambda *a, **kw: next(outputs)):
+    ]
+    with patch("subprocess.check_output", side_effect=outputs):
         assert _collect_git_info()["dirty"] is True
 
 

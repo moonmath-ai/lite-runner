@@ -21,7 +21,6 @@ from typing import Any
 import questionary
 import wandb
 
-# Mapping from Param.type strings to Python types for argparse.
 _PARAM_TYPE_MAP: dict[str, type] = {"int": int, "float": float, "str": str, "path": str}
 
 
@@ -222,8 +221,11 @@ class Runner:
         self._log_extra_outputs(wb_run, output_dir)
 
         # Log the run log files
-        log_files = [output_dir / name for name in ("run.log", "stdout.log", "stderr.log")]
-        existing_logs = [f for f in log_files if f.exists()]
+        existing_logs = [
+            output_dir / name
+            for name in ("run.log", "stdout.log", "stderr.log")
+            if (output_dir / name).exists()
+        ]
         if existing_logs:
             artifact = wandb.Artifact(f"logs-{wb_run.id}", type="log")
             for f in existing_logs:
@@ -235,9 +237,8 @@ class Runner:
         num_images = self._count_logged("image")
 
         # Finalize
-        failed = exit_code != 0
-        status = "failed" if failed else "success"
-        if failed:
+        status = "failed" if exit_code != 0 else "success"
+        if exit_code != 0:
             wb_run.tags = [*run_tags, "failed"]
         wb_run.summary.update({
             "exit_code": exit_code,
@@ -298,10 +299,7 @@ class Runner:
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
 
         ns = parser.parse_args()
-        result = {}
-        for p in self.params:
-            if not p.is_fixed:
-                result[p.dest] = getattr(ns, p.dest, None)
+        result = {p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed}
         result["_dry_run"] = ns.dry_run
         result["_no_interactive"] = ns.no_interactive
         result["_keep_outputs"] = ns.keep_outputs
@@ -369,11 +367,8 @@ class Runner:
             print("Cancelled.", file=sys.stderr)
             sys.exit(1)
 
-        if p.type == "int":
-            answer = int(answer)
-        elif p.type == "float":
-            answer = float(answer)
-        return answer
+        caster = _PARAM_TYPE_MAP.get(p.type, str)
+        return caster(answer)
 
     def _prompt_nargs(self, p: Param) -> list:
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
@@ -396,20 +391,22 @@ class Runner:
 
     def _interpolate_output(self, resolved: dict, output_dir: Path) -> dict:
         """Return a copy of resolved with $output replaced in fixed-value params."""
-        param_values = dict(resolved)
+        result = dict(resolved)
         out = str(output_dir)
         for p in self.params:
             if not p.is_fixed:
                 continue
             if isinstance(p.value, list):
-                param_values[p.dest] = [str(v).replace("$output", out) for v in p.value]
+                interpolated = [str(v).replace("$output", out) for v in p.value]
+                if any("$output" in str(v) for v in p.value):
+                    Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
+                result[p.dest] = interpolated
             else:
                 val = str(p.value).replace("$output", out)
-                if val != str(p.value):
-                    # Value contained $output -- ensure parent dirs exist for the output file
+                if "$output" in str(p.value):
                     Path(val).parent.mkdir(parents=True, exist_ok=True)
-                param_values[p.dest] = val
-        return param_values
+                result[p.dest] = val
+        return result
 
     # -----------------------------------------------------------------------
     # Build command
@@ -519,16 +516,14 @@ class Runner:
             _upload_file(wb_run, path, p.log_as, label=p.name)
 
     def _log_extra_outputs(self, wb_run, output_dir: Path) -> None:
-        def interpolate(s: str) -> str:
-            return s.replace("$output", str(output_dir))
-
+        out = str(output_dir)
         for o in self.outputs:
-            src = Path(interpolate(o.path))
+            src = Path(o.path.replace("$output", out))
             if not src.exists():
                 print(f"[genai_runner] Warning: {src} not found, skipping")
                 continue
             if o.copy_to:
-                dst = Path(interpolate(o.copy_to))
+                dst = Path(o.copy_to.replace("$output", out))
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
                 src = dst
@@ -546,18 +541,18 @@ class Runner:
             raw = matches[-1]  # last match wins
             if m.type == "float":
                 try:
-                    val: object = float(raw)
+                    wb_run.summary[m.name] = float(raw)
                 except ValueError:
-                    val = raw
+                    wb_run.summary[m.name] = raw
             else:
-                val = raw
-            wb_run.summary[m.name] = val
+                wb_run.summary[m.name] = raw
 
     def _count_logged(self, media_type: str) -> int:
         """Count params and outputs that log as the given media type."""
-        from_params = sum(1 for p in self.params if p.log_as == media_type and p.log_when == "after")
-        from_outputs = sum(1 for o in self.outputs if o.log_as == media_type)
-        return from_params + from_outputs
+        return (
+            sum(1 for p in self.params if p.log_as == media_type)
+            + sum(1 for o in self.outputs if o.log_as == media_type)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -566,11 +561,9 @@ class Runner:
 
 def _cast_nargs(values: list, types: list[str]) -> list:
     """Cast each element in *values* according to the corresponding type string."""
-    result = []
-    for v, t in zip(values, types):
-        caster = _PARAM_TYPE_MAP.get(t, str)
-        result.append(caster(v))
-    return result
+    if len(values) != len(types):
+        raise ValueError(f"Expected {len(types)} values, got {len(values)}: {values}")
+    return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types)]
 
 
 def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> None:

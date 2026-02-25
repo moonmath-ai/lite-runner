@@ -24,7 +24,7 @@ runner = Runner(
 
 if __name__ == "__main__":
     for thresh in [-10, -3, -1, 0]:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"SWEEP: threshold={thresh}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
         runner.run(overrides={"threshold": thresh})
