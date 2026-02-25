@@ -13,8 +13,9 @@ runner = Runner(
     command="python examples/fake_model.py",
     params=[
         Param("prompt", help="Text prompt for generation"),
-        Param("image", type="path", help="Input image",
-              nargs=3, labels=["path", "start_frame", "strength"],
+        Param("image", help="Input image",
+              types=["path", "float", "float"],
+              labels=["path", "start_frame", "strength"],
               default=["examples/fake_input.jpg", "0", "0.8"],
               log_as="image"),
         Param("threshold", type="float", default=-3.2, help="Attention threshold"),

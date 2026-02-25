@@ -97,10 +97,15 @@ def test_param_log_when_none_without_log_as():
     assert Param("prompt").log_when is None
 
 
-def test_param_nargs_stored():
-    p = Param("image", nargs=3, labels=["path", "start", "strength"])
+def test_param_types_infers_nargs():
+    p = Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"])
     assert p.nargs == 3
+    assert p.types == ["path", "float", "float"]
     assert p.labels == ["path", "start", "strength"]
+
+
+def test_param_nargs_none_without_types():
+    assert Param("prompt").nargs is None
 
 
 # ---------------------------------------------------------------------------
@@ -141,15 +146,16 @@ def test_parse_choices():
         assert runner._parse_cli_args()["mode"] == "quality"
 
 
-def test_parse_nargs():
-    runner = _make_runner([Param("image", nargs=3, labels=["path", "start", "strength"])])
+def test_parse_types():
+    runner = _make_runner([Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"])])
     with patch("sys.argv", ["prog", "--image", "photo.jpg", "0", "0.8"]):
         args = runner._parse_cli_args()
+    # argparse returns strings; casting happens in _resolve_values
     assert args["image"] == ["photo.jpg", "0", "0.8"]
 
 
-def test_parse_nargs_with_spaces_in_path():
-    runner = _make_runner([Param("image", nargs=3)])
+def test_parse_types_with_spaces_in_path():
+    runner = _make_runner([Param("image", types=["path", "float", "float"])])
     with patch("sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]):
         args = runner._parse_cli_args()
     assert args["image"] == ["path/to something/img.jpg", "0", "0.8"]
@@ -193,6 +199,24 @@ def test_cli_value_beats_default():
     assert resolved["seed"] == 99
 
 
+def test_resolve_casts_types():
+    runner = Runner(command="echo", params=[
+        Param("image", types=["path", "int", "float"]),
+    ])
+    resolved = runner._resolve_values(
+        {"image": ["photo.jpg", "5", "0.8"], **_BUILTIN_FLAGS}, overrides={},
+    )
+    assert resolved["image"] == ["photo.jpg", 5, 0.8]
+
+
+def test_resolve_casts_default_list():
+    runner = Runner(command="echo", params=[
+        Param("image", types=["path", "float", "float"], default=["img.jpg", "0", "0.8"]),
+    ])
+    resolved = runner._resolve_values({"image": None, **_BUILTIN_FLAGS}, overrides={})
+    assert resolved["image"] == ["img.jpg", 0.0, 0.8]
+
+
 # ---------------------------------------------------------------------------
 # Prompt missing
 # ---------------------------------------------------------------------------
@@ -226,17 +250,18 @@ def test_interactive_select_for_choices():
     assert resolved["mode"] == "fast"
 
 
-def test_interactive_nargs_prompts_each_part():
+def test_interactive_types_prompts_each_part():
     runner = Runner(command="echo", params=[
-        Param("image", nargs=3, labels=["path", "start", "strength"]),
+        Param("image", types=["path", "float", "float"], labels=["path", "start", "strength"]),
     ])
     resolved = {"image": None}
-    answers = iter(["photo.jpg", "0", "0.8"])
+    answers = iter(["0", "0.8"])
     with patch("genai_runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
         runner._prompt_missing(resolved, interactive=True)
-    assert resolved["image"] == ["photo.jpg", "0", "0.8"]
+    # After prompting, types are cast: str, float, float
+    assert resolved["image"] == ["photo.jpg", 0.0, 0.8]
 
 
 def test_interactive_cancel_exits():
@@ -314,10 +339,22 @@ def test_build_custom_flag():
     assert runner._build_command({"out": "/tmp/x"}) == ["run.py", "-o", "/tmp/x"]
 
 
-def test_build_nargs_from_cli():
-    runner = Runner(command="run.py", params=[Param("image", nargs=3)])
-    assert runner._build_command({"image": ["photo.jpg", "0", "0.8"]}) == [
-        "run.py", "--image", "photo.jpg", "0", "0.8",
+def test_build_command_as_list():
+    runner = Runner(command=["python", "-m", "my model"], params=[Param("prompt")])
+    assert runner._build_command({"prompt": "a cat"}) == [
+        "python", "-m", "my model", "--prompt", "a cat",
+    ]
+
+
+def test_build_command_string_with_quotes():
+    runner = Runner(command='python "my script.py"', params=[])
+    assert runner._build_command({}) == ["python", "my script.py"]
+
+
+def test_build_types_from_cli():
+    runner = Runner(command="run.py", params=[Param("image", types=["path", "float", "float"])])
+    assert runner._build_command({"image": ["photo.jpg", 0.0, 0.8]}) == [
+        "run.py", "--image", "photo.jpg", "0.0", "0.8",
     ]
 
 

@@ -42,9 +42,9 @@ class Param:
         help: Description shown in --help and TUI prompt.
         flag: Override the CLI flag (default: --<name with hyphens>).
         value: Fixed value with $output interpolation. Never prompted.  Can be a list for multi-value flags.
-        nargs: Number of values this flag consumes.  Result is always a list.
-            Use with labels= to name each part for the TUI.
-        labels: Names for each nargs part, used in TUI prompts and --help.
+        types: Per-element types for multi-value flags, e.g. ["path", "float", "float"].
+            Implies nargs=len(types).  Each part gets its own type in argparse and TUI.
+        labels: Names for each part, used in TUI prompts and --help metavar.
             e.g. labels=["path", "start_frame", "strength"] prompts separately for each.
         hidden: If True, not shown in --help.
         log_as: If set, upload the file to W&B. One of "video", "image", "artifact", "text".
@@ -58,7 +58,7 @@ class Param:
     help: str = ""
     flag: str | None = None
     value: Any = None
-    nargs: int | None = None
+    types: list[str] | None = None
     labels: list[str] | None = None
     hidden: bool = False
     log_as: str | None = None
@@ -82,6 +82,10 @@ class Param:
     @property
     def dest(self) -> str:
         return self._dest
+
+    @property
+    def nargs(self) -> int | None:
+        return len(self.types) if self.types else None
 
     @property
     def is_fixed(self) -> bool:
@@ -129,7 +133,7 @@ class Metric:
 
 @dataclass
 class Runner:
-    command: str
+    command: str | list[str]
     params: list[Param] = field(default_factory=list)
     outputs: list[Output] = field(default_factory=list)
     metrics: list[Metric] = field(default_factory=list)
@@ -177,7 +181,7 @@ class Runner:
                 **{f"git/{k}": v for k, v in git_info.items()},
                 "meta/hostname": os.uname().nodename,
                 "meta/datetime": datetime.datetime.now().isoformat(),
-                "meta/command": self.command,
+                "meta/command": shlex.join(self.command) if isinstance(self.command, list) else self.command,
             },
         )
 
@@ -283,11 +287,12 @@ class Runner:
             else:
                 kwargs["type"] = _PARAM_TYPE_MAP.get(p.type, str)
                 if p.nargs is not None:
+                    # Multi-value: argparse gets nargs=N, all as str (typed later)
                     kwargs["nargs"] = p.nargs
+                    kwargs["type"] = str
                     if p.labels and not p.hidden:
-                        label_str = " ".join(p.labels)
                         kwargs["metavar"] = tuple(p.labels)
-                        kwargs["help"] = f"{p.help or ''} ({label_str})".strip()
+                        kwargs["help"] = f"{p.help or ''} ({' '.join(p.labels)})".strip()
             if p.choices:
                 kwargs["choices"] = p.choices
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
@@ -321,6 +326,9 @@ class Runner:
             # Apply callable defaults
             if resolved.get(p.dest) is None and p.default is not None:
                 resolved[p.dest] = p.default() if callable(p.default) else p.default
+            # Cast multi-value args to per-element types
+            if p.types and resolved.get(p.dest) is not None:
+                resolved[p.dest] = _cast_nargs(resolved[p.dest], p.types)
         return resolved
 
     # -----------------------------------------------------------------------
@@ -369,9 +377,10 @@ class Runner:
 
     def _prompt_nargs(self, p: Param) -> list:
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
+        element_types = p.types or [p.type] * p.nargs
         parts = []
-        for label in labels:
-            if p.type == "path" and len(parts) == 0:
+        for label, etype in zip(labels, element_types):
+            if etype == "path":
                 answer = questionary.path(f"{p.name} {label}:").ask()
             else:
                 answer = questionary.text(f"{p.name} {label}:").ask()
@@ -379,7 +388,7 @@ class Runner:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
             parts.append(answer)
-        return parts
+        return _cast_nargs(parts, element_types)
 
     # -----------------------------------------------------------------------
     # $output interpolation
@@ -407,7 +416,7 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _build_command(self, param_values: dict) -> list[str]:
-        parts = shlex.split(self.command)
+        parts = list(self.command) if isinstance(self.command, list) else shlex.split(self.command)
         for p in self.params:
             val = param_values.get(p.dest)
             if val is None or (p.type == "bool" and not val):
@@ -554,6 +563,15 @@ class Runner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _cast_nargs(values: list, types: list[str]) -> list:
+    """Cast each element in *values* according to the corresponding type string."""
+    result = []
+    for v, t in zip(values, types):
+        caster = _PARAM_TYPE_MAP.get(t, str)
+        result.append(caster(v))
+    return result
+
 
 def _upload_file(wb_run, path: Path, log_as: str, label: str | None = None) -> None:
     key = label or path.stem
