@@ -51,7 +51,7 @@ Then run it:
 
 ```bash
 python run.py --prompt "a cat walking"          # interactive TUI fills missing params
-python run.py --prompt "a cat" -n               # non-interactive, fail if missing
+python run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
 python run.py --prompt "a cat" --dry-run        # print command, don't run
 ```
 
@@ -156,8 +156,7 @@ Runner(
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print command and exit |
-| `-n` / `--no-interactive` | Fail if required params missing |
-| `--keep-outputs` | Reminder that outputs are kept |
+| `--no-interactive` | Fail if required params missing |
 | `--run-name NAME` | Override W&B run name |
 | `--wandb-project NAME` | Override W&B project |
 

@@ -212,7 +212,6 @@ class Runner:
         resolved = self._resolve_values(self._cli_args, overrides or {})
         interactive = not resolved.pop("_no_interactive")
         dry_run = resolved.pop("_dry_run")
-        keep_outputs = resolved.pop("_keep_outputs")
 
         # Prompt for missing params (interactive mode)
         self._prompt_missing(resolved, interactive=interactive)
@@ -317,12 +316,6 @@ class Runner:
         print(f"Duration: {duration:.1f}s")
         print(f"Output dir: {output_dir}")
 
-        if not keep_outputs:
-            print(
-                "(use --keep-outputs to preserve local files,"
-                f" or delete with: rm -rf '{output_dir}')"
-            )
-
     # -----------------------------------------------------------------------
     # CLI parsing
     # -----------------------------------------------------------------------
@@ -337,17 +330,9 @@ class Runner:
             "--dry-run", action="store_true", help="Print command and exit"
         )
         parser.add_argument(
-            "-n",
             "--no-interactive",
             action="store_true",
             help="Non-interactive mode; fail if required params are missing",
-        )
-        parser.add_argument(
-            "--keep-outputs",
-            action="store_true",
-            help=(
-                "Keep local output directory (always kept, flag is a no-op reminder)"
-            ),
         )
         parser.add_argument("--run-name", default=None, help="Override W&B run name")
         parser.add_argument(
@@ -387,7 +372,6 @@ class Runner:
         }
         result["_dry_run"] = ns.dry_run
         result["_no_interactive"] = ns.no_interactive
-        result["_keep_outputs"] = ns.keep_outputs
         if ns.run_name:
             result["_run_name"] = ns.run_name
         if ns.wandb_project:

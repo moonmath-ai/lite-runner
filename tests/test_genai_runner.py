@@ -22,7 +22,7 @@ from genai_runner import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_BUILTIN_FLAGS = {"_dry_run": False, "_no_interactive": True, "_keep_outputs": False}
+_BUILTIN_FLAGS = {"_dry_run": False, "_no_interactive": True}
 
 _FAKE_GIT_INFO = {
     "repo": "test-repo",
@@ -293,11 +293,10 @@ def test_parse_types_with_spaces_in_path():
 
 def test_builtin_flags():
     runner = _make_runner()
-    with patch("sys.argv", ["prog", "--dry-run", "-n", "--keep-outputs"]):
+    with patch("sys.argv", ["prog", "--dry-run", "--no-interactive"]):
         args = runner._parse_cli_args()
     assert args["_dry_run"] is True
     assert args["_no_interactive"] is True
-    assert args["_keep_outputs"] is True
 
 
 def test_wandb_project_override():
@@ -648,7 +647,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
             Param("output-path", value="$output/video.mp4", type="path-video"),
         ],
     )
-    with patch("sys.argv", ["prog", "--dry-run", "--prompt", "test", "-n"]):
+    with patch("sys.argv", ["prog", "--dry-run", "--prompt", "test", "--no-interactive"]):
         runner.run()
     captured = capsys.readouterr()
     assert "[dry-run]" in captured.out
@@ -679,7 +678,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     )
 
     with (
-        patch("sys.argv", ["prog", "-n"]),
+        patch("sys.argv", ["prog", "--no-interactive"]),
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._save_code_snapshot"),
@@ -711,7 +710,7 @@ def test_full_run_explicit_group(tmp_path):
     )
 
     with (
-        patch("sys.argv", ["prog", "-n"]),
+        patch("sys.argv", ["prog", "--no-interactive"]),
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._save_code_snapshot"),
