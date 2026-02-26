@@ -857,6 +857,24 @@ def test_log_extra_outputs_single_file(tmp_path):
     wb_run.log_artifact.assert_called_once()
 
 
+def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
+    """Two zip outputs with same implicit label should raise."""
+    (tmp_path / "debug").mkdir()
+    (tmp_path / "debug" / "a.pt").write_text("x")
+    (tmp_path / "debug" / "b.png").write_text("y")
+
+    runner = Runner(
+        command="echo",
+        outputs=[
+            Output("$output/debug/*.pt", log_as="zip"),
+            Output("$output/debug/*.png", log_as="zip"),
+        ],
+    )
+    wb_run = _mock_wb_run()
+    with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
+        runner._log_extra_outputs(wb_run, tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # Git info
 # ---------------------------------------------------------------------------

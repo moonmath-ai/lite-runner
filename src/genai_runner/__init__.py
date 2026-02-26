@@ -683,6 +683,7 @@ class Runner:
 
     def _log_extra_outputs(self, wb_run: _WBRun, output_dir: Path) -> None:
         out = str(output_dir)
+        seen_zips: set[str] = set()
         for o in self.outputs:
             raw_path = o.path.replace("$output", out)
             is_glob = any(c in raw_path for c in ("*", "?", "["))
@@ -714,6 +715,13 @@ class Runner:
 
             label = o.name or base.name or "output"
             if o.log_as == "zip":
+                if label in seen_zips:
+                    msg = (
+                        f"Duplicate zip label '{label}':"
+                        " set Output(name=...) to disambiguate"
+                    )
+                    raise ValueError(msg)
+                seen_zips.add(label)
                 _zip_and_upload(wb_run, matches, base, output_dir, label)
             else:
                 for m in matches:
