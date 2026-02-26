@@ -205,13 +205,16 @@ class Runner:
     metrics: list[Metric] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
-    wandb_project: str | None = None  # default: git repo name
+    wandb_project: str | None = None
     group: str | None = None  # W&B run group for sweeps
+
+    def __post_init__(self) -> None:
+        if isinstance(self.command, str):
+            self.command = shlex.split(self.command)
+        self._cli_args = self._parse_cli_args()
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
-        if not hasattr(self, "_cli_args"):
-            self._cli_args = self._parse_cli_args()
         resolved = self._resolve_values(self._cli_args, overrides or {})
         interactive = not resolved.pop("_no_interactive")
         dry_run = resolved.pop("_dry_run")
@@ -255,9 +258,7 @@ class Runner:
                 **{f"git/{k}": v for k, v in git_info.items()},
                 "meta/hostname": os.uname().nodename,
                 "meta/datetime": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-                "meta/command": shlex.join(self.command)
-                if isinstance(self.command, list)
-                else self.command,
+                "meta/command": shlex.join(self.command),
             },
         )
 
@@ -496,24 +497,20 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _build_command(self, param_values: dict) -> list[str]:
-        parts = (
-            list(self.command)
-            if isinstance(self.command, list)
-            else shlex.split(self.command)
-        )
+        cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.dest)
             if val is None or (p._primary_type == "bool" and not val):
                 continue
             assert p.flag is not None
             if p._primary_type == "bool":
-                parts.append(p.flag)
+                cmd.append(p.flag)
             elif isinstance(val, list):
-                parts.append(p.flag)
-                parts.extend(str(v) for v in val)
+                cmd.append(p.flag)
+                cmd.extend(str(v) for v in val)
             else:
-                parts.extend([p.flag, str(val)])
-        return parts
+                cmd.extend([p.flag, str(val)])
+        return cmd
 
     # -----------------------------------------------------------------------
     # Subprocess execution
