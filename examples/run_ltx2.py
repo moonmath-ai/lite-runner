@@ -10,12 +10,14 @@ from genai_runner import Metric, Param, Runner
 
 @lru_cache
 def _ltx2_dir() -> str:
-    return snapshot_download("Lightricks/LTX-2")
+    # return snapshot_download("Lightricks/LTX-2")
+    return "/hf_dir/LTX-2"
 
 
 @lru_cache
 def _gemma_dir() -> str:
-    return snapshot_download("google/gemma-3-12b-it-qat-q4_0-unquantized")
+    # return snapshot_download("google/gemma-3-12b-it-qat-q4_0-unquantized")
+    return "hf_dir/Gemma"
 
 
 runner = Runner(
@@ -52,7 +54,7 @@ runner = Runner(
         ),
         # --- Prompt ---
         Param("prompt", help="Text prompt"),
-        Param("negative-prompt", help="Negative prompt"),
+        # Param("negative-prompt", help="Negative prompt"),
         # --- Image conditioning ---
         Param(
             "image",
@@ -155,7 +157,7 @@ runner = Runner(
             help="Stages to capture (e.g. '1,2')",
         ),
         # --- Enhance ---
-        Param("enhance-prompt", type="bool"),
+        Param("enhance-prompt", type="bool", hidden=True, default=False),
     ],
     metrics=[
         Metric("skipped_pct", pattern=r"skipped=([\d.]+)%"),
