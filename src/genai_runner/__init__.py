@@ -335,6 +335,7 @@ class Runner:
 
         print("=" * 60)
         exit_code, duration, stdout_text = self._execute(cmd, output_dir)
+        print("=" * 60)
 
         # Post-run: never raise, always try to finish W&B run
         self._post_run(
@@ -382,7 +383,6 @@ class Runner:
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
 
-        print("=" * 60)
         print(f"Status: {status} (exit code {exit_code})")
         print(f"Duration: {duration:.1f}s")
         print(f"Output dir: {output_dir}")
