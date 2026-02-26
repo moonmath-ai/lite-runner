@@ -276,14 +276,14 @@ class Runner:
             return
 
         # W&B init
-        config: dict[str, object] = {
-            f"param/{k}": v for k, v in resolved_params.items()
-        }
+        config: dict[str, object] = {}
+        for k, v in resolved_params.items():
+            config[f"param/{k}"] = v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
         config["meta/hostname"] = os.uname().nodename
         config["meta/datetime"] = datetime.datetime.now(tz=datetime.UTC).isoformat()
-        config["meta/command"] = shlex.join(self.command)
+        config["meta/command"] = shlex.join(self.command) 
         wb_run = wandb.init(
             project=project,
             name=runner_flags.run_name,
