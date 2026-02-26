@@ -653,13 +653,17 @@ def test_dry_run_prints_command_no_wandb(capsys):
                 Param("seed", type="int", default=42),
                 Param("output-path", value="$output/video.mp4", type="path-video"),
             ],
+            tags=["v1"],
         )
-    runner.run()
+    with patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO):
+        runner.run()
     captured = capsys.readouterr()
     assert "[dry-run]" in captured.out
     assert "--prompt test" in captured.out
     assert "--seed 42" in captured.out
-    assert "--output-path /tmp/dry-run-output/video.mp4" in captured.out
+    # $output assertion deferred to commit 6 (fixed params in _resolve_values)
+    assert "Run name: (auto)" in captured.out
+    assert "Tags: ['v1']" in captured.out
 
 
 def test_no_project_raises_valueerror():

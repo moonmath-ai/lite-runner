@@ -233,21 +233,19 @@ class Runner:
             )
             raise ValueError(msg)
 
-        # Dry-run: show command without W&B or output dir
-        if dry_run:
-            param_values = self._interpolate_output(
-                resolved_values,
-                Path("/tmp/dry-run-output"),  # noqa: S108
-            )
-            cmd = self._build_command(param_values)
-            print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
-            return
-
-        # W&B init
+        # Tags
         run_tags = list(self.tags)
         if git_info.get("dirty"):
             run_tags.append("dirty-git")
+
+        # Dry-run: show command without W&B or output dir
+        if dry_run:
+            cmd = self._build_command(resolved_values)
+            print(f"[dry-run] Project: {project}")
+            print(f"[dry-run] Run name: {run_name or '(auto)'}")
+            print(f"[dry-run] Tags: {run_tags}")
+            print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
+            return
 
         config = {
             **{
