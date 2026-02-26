@@ -314,13 +314,13 @@ class Runner:
             _log_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in param values
-        param_values = self._interpolate_output(resolved_params, output_dir)
+        interpolated_params = self._interpolate_output(resolved_params, output_dir)
 
         # Log input files (log_when == "before")
         if runner_flags.dry_run:
             print(f"[dry-run] Logging input files")  # TODO: list files
         else:   
-            self._log_files(wb_run, param_values, when="before")
+            self._log_files(wb_run, interpolated_params, when="before")
 
         if runner_flags.dry_run:
             print("W&B run: <link to W&B run>")
@@ -328,7 +328,7 @@ class Runner:
             print(f"W&B run: {wb_run.url}")
 
         # Build command
-        cmd = self._build_command(param_values)
+        cmd = self._build_command(interpolated_params)
         print(f"Command:\n  {shlex.join(cmd)}")
 
         # Execute
@@ -342,7 +342,7 @@ class Runner:
         # Post-run: never raise, always try to finish W&B run
         self._post_run(
             wb_run,
-            param_values,
+            interpolated_params,
             output_dir,
             exit_code,
             duration,
