@@ -463,7 +463,9 @@ class Runner:
         missing = [
             p
             for p in self.params
-            if not p.is_fixed and p.type != "bool" and resolved_params.get(p.dest) is None
+            if not p.is_fixed
+            and p.type != "bool"
+            and resolved_params.get(p.dest) is None
         ]
 
         if not missing:
