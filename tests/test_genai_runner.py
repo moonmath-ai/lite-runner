@@ -630,9 +630,10 @@ def test_execute_captures_stdout_and_stderr(tmp_path):
         "-c",
         "import sys; print('out'); print('err', file=sys.stderr)",
     ]
-    exit_code, duration, stdout_text = runner._execute(cmd, tmp_path)
+    exit_code, duration, stdout_text, aborted = runner._execute(cmd, tmp_path)
 
     assert exit_code == 0
+    assert aborted is False
     assert duration > 0
     assert "out" in stdout_text
     assert (tmp_path / "stdout.log").read_text().strip() == "out"
@@ -644,7 +645,7 @@ def test_execute_captures_stdout_and_stderr(tmp_path):
 
 def test_execute_nonzero_exit_code(tmp_path):
     runner = Runner(command="echo")
-    exit_code, _, _ = runner._execute(
+    exit_code, _, _, _ = runner._execute(
         [sys.executable, "-c", "import sys; sys.exit(42)"], tmp_path
     )
     assert exit_code == 42
@@ -653,7 +654,7 @@ def test_execute_nonzero_exit_code(tmp_path):
 def test_execute_env_vars_passed(tmp_path):
     runner = Runner(command="echo", env={"MY_TEST_VAR": "hello123"})
     cmd = [sys.executable, "-c", "import os; print(os.environ['MY_TEST_VAR'])"]
-    exit_code, _, stdout_text = runner._execute(cmd, tmp_path)
+    exit_code, _, stdout_text, _ = runner._execute(cmd, tmp_path)
     assert exit_code == 0
     assert "hello123" in stdout_text
 

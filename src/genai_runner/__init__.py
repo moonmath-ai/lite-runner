@@ -336,7 +336,7 @@ class Runner:
             return
 
         print("=" * 60)
-        exit_code, duration, stdout_text = self._execute(cmd, output_dir)
+        exit_code, duration, stdout_text, aborted = self._execute(cmd, output_dir)
         print("=" * 60)
 
         # Post-run: never raise, always try to finish W&B run
@@ -348,6 +348,7 @@ class Runner:
             duration,
             stdout_text,
             self.tags,
+            aborted=aborted,
         )
 
     def _post_run(
@@ -359,8 +360,15 @@ class Runner:
         duration: float,
         stdout_text: str,
         run_tags: list[str],
+        *,
+        aborted: bool = False,
     ) -> None:
-        status = "success" if exit_code == 0 else "failed"  # TODO: add status: aborted
+        if aborted:
+            status = "aborted"
+        elif exit_code == 0:
+            status = "success"
+        else:
+            status = "failed"
         summary = {
             "exit_code": exit_code,
             "duration_seconds": duration,
@@ -376,7 +384,7 @@ class Runner:
             ),
             ("log extra outputs", lambda: self._log_extra_outputs(wb_run, output_dir)),
             ("log run logs", lambda: self._log_run_logs(wb_run, output_dir)),
-            ("tag failed run", lambda: _tag_failed(wb_run, exit_code, run_tags)),
+            ("tag run status", lambda: _tag_status(wb_run, status, run_tags)),
             ("update W&B summary", lambda: wb_run.summary.update(summary)),
             ("finish W&B run", lambda: wb_run.finish(exit_code=exit_code)),
         ]:
@@ -568,7 +576,9 @@ class Runner:
     # Subprocess execution
     # -----------------------------------------------------------------------
 
-    def _execute(self, cmd: list[str], output_dir: Path) -> tuple[int, float, str]:
+    def _execute(
+        self, cmd: list[str], output_dir: Path
+    ) -> tuple[int, float, str, bool]:
         stdout_lines: list[str] = []
         lock = threading.Lock()
 
@@ -618,6 +628,7 @@ class Runner:
                 kwargs={"prefix": "[stderr] "},
             )
 
+            aborted = False
             start = time.monotonic()
             t_out.start()
             t_err.start()
@@ -625,6 +636,7 @@ class Runner:
             try:
                 proc.wait()
             except KeyboardInterrupt:
+                aborted = True
                 print("\n[genai_runner] Ctrl-C received, terminating subprocess...")
                 proc.send_signal(signal.SIGTERM)
                 try:
@@ -642,7 +654,7 @@ class Runner:
             t_err.join()
             duration = time.monotonic() - start
 
-        return proc.returncode, duration, "".join(stdout_lines)
+        return proc.returncode, duration, "".join(stdout_lines), aborted
 
     # -----------------------------------------------------------------------
     # File logging to W&B
@@ -823,10 +835,10 @@ def _upload_file(
         print(f"[genai_runner] Warning: failed to upload {path} as {log_as}: {e}")
 
 
-def _tag_failed(wb_run: _WBRun, exit_code: int, run_tags: list[str]) -> None:
-    """Set 'failed' tag on W&B run if exit code is non-zero."""
-    if exit_code != 0:
-        wb_run.tags = [*run_tags, "failed"]
+def _tag_status(wb_run: _WBRun, status: str, run_tags: list[str]) -> None:
+    """Add 'failed' or 'aborted' tag to W&B run when not successful."""
+    if status != "success":
+        wb_run.tags = [*run_tags, status]
 
 
 def _collect_git_info() -> dict:
