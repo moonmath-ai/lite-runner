@@ -329,6 +329,16 @@ def test_bool_in_type_list_raises():
         Param("x", type=["bool", "str"])
 
 
+def test_hidden_requires_default():
+    with pytest.raises(ValueError, match="hidden=True.*requires a default"):
+        Param("x", hidden=True)
+
+
+def test_hidden_with_default_ok():
+    p = Param("x", hidden=True, default=42)
+    assert p.hidden is True
+
+
 # ---------------------------------------------------------------------------
 # Resolve values
 # ---------------------------------------------------------------------------
@@ -510,6 +520,38 @@ def test_interactive_skips_overridden_param():
         )
     mock_q.text.assert_not_called()
     assert resolved["seed"] == 77
+
+
+def test_interactive_skips_hidden_param():
+    """Hidden params are not prompted; they use their default."""
+    runner = Runner(
+        command="echo",
+        params=[
+            Param("prompt"),
+            Param("threshold", type="float", default=-3.0, hidden=True),
+        ],
+    )
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.text.return_value.ask.return_value = "a cat"
+        resolved = runner._prompt_params(
+            {"prompt": None, "threshold": -3.0},
+            {"prompt": None, "threshold": None},
+            {},
+            interactive=True,
+        )
+    # Only prompt should be prompted, not threshold
+    assert mock_q.text.call_count == 1
+    assert resolved["prompt"] == "a cat"
+    assert resolved["threshold"] == -3.0
+
+
+def test_hidden_param_accepts_cli_flag():
+    """Hidden params can still be overridden from CLI."""
+    with patch("sys.argv", ["prog", "--threshold", "-5.0"]):
+        runner = _make_runner(
+            [Param("threshold", type="float", default=-3.0, hidden=True)]
+        )
+    assert runner.parsed_params["threshold"] == -5.0
 
 
 # ---------------------------------------------------------------------------

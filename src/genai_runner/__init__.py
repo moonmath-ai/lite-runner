@@ -96,6 +96,9 @@ class Param:
         log_when: "before" (input file) or "after" (output file).
             Auto-inferred from $output in value when type encodes
             upload intent (path-image, path-video, etc.).
+        hidden: If True, skip interactive prompting and use the
+            default value.  The param still accepts CLI flags and
+            is logged normally.  Requires a default.
     """
 
     name: str
@@ -107,6 +110,7 @@ class Param:
     value: Any = None
     labels: list[str] | None = None
     log_when: str | None = None
+    hidden: bool = False
 
     def __post_init__(self) -> None:
         self._dest = self.name.replace("-", "_")
@@ -122,6 +126,9 @@ class Param:
             if t != "bool" and t not in _PARAM_TYPE_MAP:
                 msg = f"Unknown param type '{t}' for param '{self.name}'"
                 raise ValueError(msg)
+        if self.hidden and self.default is None:
+            msg = f"Param('{self.name}', hidden=True) requires a default"
+            raise ValueError(msg)
         if self.type == "bool" and self.default not in (None, False):
             print(
                 f"[genai_runner] Warning: Param('{self.name}', type='bool')"
@@ -483,6 +490,7 @@ class Runner:
             p
             for p in self.params
             if not p.is_fixed
+            and not p.hidden
             and p.type != "bool"
             and p.dest not in overrides
             and parsed_params.get(p.dest) is None
