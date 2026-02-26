@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
+import pprint
 import re
 import shlex
 import shutil
@@ -288,7 +289,7 @@ class Runner:
             print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
             print(f"[dry-run] Group: {self.group}")
             print(f"[dry-run] Tags: {self.tags}")
-            print(f"[dry-run] Config: {config}")
+            print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             run_name = runner_flags.run_name or "run"
             run_url = "<link to W&B run>"
         else:
