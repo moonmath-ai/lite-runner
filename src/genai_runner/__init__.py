@@ -445,11 +445,11 @@ class Runner:
     # Interactive prompts
     # -----------------------------------------------------------------------
 
-    def _prompt_missing(self, resolved: dict, *, interactive: bool) -> None:
+    def _prompt_missing(self, resolved_params: dict, *, interactive: bool) -> None:
         missing = [
             p
             for p in self.params
-            if not p.is_fixed and p.type != "bool" and resolved.get(p.dest) is None
+            if not p.is_fixed and p.type != "bool" and resolved_params.get(p.dest) is None
         ]
 
         if not missing:
@@ -470,9 +470,9 @@ class Runner:
 
         for p in missing:
             if p.nargs is not None:
-                resolved[p.dest] = self._prompt_nargs(p)
+                resolved_params[p.dest] = self._prompt_nargs(p)
             else:
-                resolved[p.dest] = self._prompt_single(p)
+                resolved_params[p.dest] = self._prompt_single(p)
 
     def _prompt_single(self, p: Param) -> int | float | str:
         label = p.help or p.name
