@@ -532,16 +532,14 @@ class Runner:
         out = str(output_dir)
         for p in self.params:
             val = result.get(p.dest)
-            if val is None or not _contains_output(val):
+            if val is None:
                 continue
             if isinstance(val, list):
                 interpolated = [str(v).replace("$output", out) for v in val]
-                Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
                 result[p.dest] = interpolated
             else:
-                new_val = str(val).replace("$output", out)
-                Path(new_val).parent.mkdir(parents=True, exist_ok=True)
-                result[p.dest] = new_val
+                interpolated = str(val).replace("$output", out)
+                result[p.dest] = interpolated
         return result
 
     # -----------------------------------------------------------------------
