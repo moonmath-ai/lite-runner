@@ -696,9 +696,9 @@ class Runner:
                 if o.log_as != "zip":
                     print(
                         f"[genai_runner] Warning: {raw_path} is a directory,"
-                        " use log_as='zip' or a glob pattern"
+                        " uploading each file individually"
+                        " (use log_as='zip' to zip instead)"
                     )
-                    continue
                 base = path
                 matches = sorted(path.rglob("*"))
             else:
