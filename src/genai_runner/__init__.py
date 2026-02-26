@@ -318,7 +318,7 @@ class Runner:
 
         # Log input files (log_when == "before")
         if runner_flags.dry_run:
-            print(f"[dry-run] Logging input files")  # TODO: list files
+            print("[dry-run] Logging input files")  # TODO: list files
         else:
             self._log_files(wb_run, interpolated_params, when="before")
 
