@@ -450,7 +450,7 @@ class Runner:
 
         ns = parser.parse_args()
         parsed_params = {
-            p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
+            p.name: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
         }
         runner_flags = _RunFlags(
             dry_run=ns.dry_run,
@@ -467,20 +467,20 @@ class Runner:
     def _resolve_params(self, parsed_params: dict, overrides: dict) -> dict:
         resolved_params = dict(parsed_params)
         for p in self.params:
-            if p.dest in overrides:
-                resolved_params[p.dest] = overrides[p.dest]
+            if p.name in overrides:
+                resolved_params[p.name] = overrides[p.name]
             elif p.is_fixed:
-                resolved_params[p.dest] = p.value() if callable(p.value) else p.value
-            elif resolved_params.get(p.dest) is not None:
+                resolved_params[p.name] = p.value() if callable(p.value) else p.value
+            elif resolved_params.get(p.name) is not None:
                 pass
             elif p.default is not None:
-                resolved_params[p.dest] = (
+                resolved_params[p.name] = (
                     p.default() if callable(p.default) else p.default
                 )
             # Cast multi-value args to per-element types
-            if p.nargs is not None and resolved_params.get(p.dest) is not None:
-                resolved_params[p.dest] = _cast_nargs(
-                    resolved_params[p.dest], p.type_list
+            if p.nargs is not None and resolved_params.get(p.name) is not None:
+                resolved_params[p.name] = _cast_nargs(
+                    resolved_params[p.name], p.type_list
                 )
         return resolved_params
 
@@ -506,11 +506,11 @@ class Runner:
             if not p.is_fixed
             and not p.hidden
             and p.type != "bool"
-            and p.dest not in overrides
-            and parsed_params.get(p.dest) is None
+            and p.name not in overrides
+            and parsed_params.get(p.name) is None
         ]
 
-        missing = [p for p in promptable if resolved_params.get(p.dest) is None]
+        missing = [p for p in promptable if resolved_params.get(p.name) is None]
 
         if not interactive:
             if missing:
@@ -528,11 +528,11 @@ class Runner:
             return resolved_params
 
         for p in promptable:
-            default = resolved_params.get(p.dest)
+            default = resolved_params.get(p.name)
             if p.nargs is not None:
-                resolved_params[p.dest] = self._prompt_nargs(p, default=default)
+                resolved_params[p.name] = self._prompt_nargs(p, default=default)
             else:
-                resolved_params[p.dest] = self._prompt_single(p, default=default)
+                resolved_params[p.name] = self._prompt_single(p, default=default)
 
         return resolved_params
 
@@ -595,15 +595,15 @@ class Runner:
         result = dict(resolved)
         out = str(output_dir)
         for p in self.params:
-            val = result.get(p.dest)
+            val = result.get(p.name)
             if val is None or val is _UNSET:
                 continue
             if isinstance(val, list):
                 interpolated = [str(v).replace("$output", out) for v in val]
-                result[p.dest] = interpolated
+                result[p.name] = interpolated
             else:
                 interpolated = str(val).replace("$output", out)
-                result[p.dest] = interpolated
+                result[p.name] = interpolated
         return result
 
     # -----------------------------------------------------------------------
@@ -613,7 +613,7 @@ class Runner:
     def _build_command(self, param_values: dict) -> list[str]:
         cmd = list(self.command)
         for p in self.params:
-            val = param_values.get(p.dest)
+            val = param_values.get(p.name)
             if val is _UNSET:
                 continue
             assert val is not None
@@ -720,7 +720,7 @@ class Runner:
         for p in self.params:
             if p.log_when != when:
                 continue
-            val = param_values.get(p.dest)
+            val = param_values.get(p.name)
             if val is None or val is _UNSET:
                 continue
             values = val if isinstance(val, list) else [val]

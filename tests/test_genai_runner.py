@@ -268,7 +268,7 @@ def test_fixed_params_not_in_argparse():
             [Param("prompt"), Param("output-path", value="$output/video.mp4")]
         )
     assert "prompt" in runner.parsed_params
-    assert "output_path" not in runner.parsed_params
+    assert "output-path" not in runner.parsed_params
 
 
 def test_parse_choices():
