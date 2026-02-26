@@ -105,6 +105,7 @@ Supports glob patterns and directory zipping:
 
 ```python
 Output("debug/**/*.png", log_as="image")        # upload each matched png
+Output("debug/", log_as="image")                 # upload each file in directory
 Output("debug/", log_as="zip")                   # zip entire directory, upload as artifact
 Output("$output/frames/*.jpg", log_as="zip")     # zip glob matches into archive
 ```
