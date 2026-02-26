@@ -311,7 +311,10 @@ class Runner:
         if runner_flags.dry_run:
             print("[dry-run] Saving code snapshot")
         else:
-            _log_code_snapshot(wb_run, output_dir, git_info)
+            try:
+                _log_code_snapshot(wb_run, output_dir, git_info)
+            except Exception as e:  # noqa: BLE001
+                print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
         # Interpolate $output in param values
         interpolated_params = self._interpolate_output(resolved_params, output_dir)
@@ -674,8 +677,8 @@ class Runner:
                     continue
                 path = Path(str(v))
                 if not path.exists():
-                    print(f"[genai_runner] Warning: {path} not found, skipping upload")
-                    continue
+                    msg = f"File not found: {path} (param '{p.name}')"
+                    raise FileNotFoundError(msg)
                 _upload_file(wb_run, path, log_as, label=p.name)
 
     def _log_extra_outputs(self, wb_run: _WBRun, output_dir: Path) -> None:
@@ -783,8 +786,8 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
 def _log_single_output(wb_run: _WBRun, path: Path, o: Output, out: str) -> None:
     """Handle a single (non-glob, non-directory) output file."""
     if not path.exists():
-        print(f"[genai_runner] Warning: {path} not found, skipping")
-        return
+        msg = f"Output file not found: {path}"
+        raise FileNotFoundError(msg)
     if o.copy_to:
         dst = Path(o.copy_to.replace("$output", out))
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -819,20 +822,17 @@ def _upload_file(
     label: str | None = None,
 ) -> None:
     key = label or path.stem
-    try:
-        if log_as == "video":
-            wb_run.log({key: wandb.Video(str(path))})
-        elif log_as == "image":
-            wb_run.log({key: wandb.Image(str(path))})
-        elif log_as == "text":
-            text = path.read_text(errors="replace")
-            wb_run.log({key: wandb.Html(f"<pre>{text}</pre>")})
-        elif log_as == "artifact":
-            artifact = wandb.Artifact(f"{key}-{wb_run.id}", type=log_as)
-            artifact.add_file(str(path))
-            wb_run.log_artifact(artifact)
-    except Exception as e:  # noqa: BLE001
-        print(f"[genai_runner] Warning: failed to upload {path} as {log_as}: {e}")
+    if log_as == "video":
+        wb_run.log({key: wandb.Video(str(path))})
+    elif log_as == "image":
+        wb_run.log({key: wandb.Image(str(path))})
+    elif log_as == "text":
+        text = path.read_text(errors="replace")
+        wb_run.log({key: wandb.Html(f"<pre>{text}</pre>")})
+    elif log_as == "artifact":
+        artifact = wandb.Artifact(f"{key}-{wb_run.id}", type=log_as)
+        artifact.add_file(str(path))
+        wb_run.log_artifact(artifact)
 
 
 def _tag_status(wb_run: _WBRun, status: str, run_tags: list[str]) -> None:
@@ -883,8 +883,8 @@ def _log_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None
     archive_path = code_dir / "source.tar.gz"
     result = git("archive", "--format=tar.gz", "-o", str(archive_path), "HEAD")
     if result.returncode != 0:
-        print(f"[genai_runner] Warning: git archive failed: {result.stderr.decode()}")
-        return
+        msg = f"git archive failed: {result.stderr.decode()}"
+        raise RuntimeError(msg)
 
     # Dirty diff (staged + unstaged vs HEAD)
     diff_path = None
@@ -895,11 +895,8 @@ def _log_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None
             diff_path.write_bytes(diff_result.stdout)
 
     # Upload as W&B artifact
-    try:
-        artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
-        artifact.add_file(str(archive_path))
-        if diff_path and diff_path.exists():
-            artifact.add_file(str(diff_path))
-        wb_run.log_artifact(artifact)
-    except Exception as e:  # noqa: BLE001
-        print(f"[genai_runner] Warning: failed to upload code snapshot: {e}")
+    artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
+    artifact.add_file(str(archive_path))
+    if diff_path and diff_path.exists():
+        artifact.add_file(str(diff_path))
+    wb_run.log_artifact(artifact)
