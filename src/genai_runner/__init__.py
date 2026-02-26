@@ -56,6 +56,13 @@ def _log_as_from_type(t: str) -> str | None:
     return None
 
 
+def _contains_output(val: object) -> bool:
+    """Check whether $output appears in a string or any element of a list."""
+    if isinstance(val, list):
+        return any("$output" in str(v) for v in val)
+    return "$output" in str(val)
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -120,11 +127,7 @@ class Param:
 
     def _value_contains_output(self) -> bool:
         """Check whether $output appears anywhere in self.value."""
-        if self.value is None:
-            return False
-        if isinstance(self.value, list):
-            return any("$output" in str(v) for v in self.value)
-        return "$output" in str(self.value)
+        return self.value is not None and _contains_output(self.value)
 
     @property
     def _primary_type(self) -> str:
@@ -189,6 +192,14 @@ class Metric:
     type: str = "float"
 
 
+@dataclass(frozen=True)
+class _RunFlags:
+    dry_run: bool = False
+    interactive: bool = True
+    run_name: str | None = None
+    wandb_project: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -211,21 +222,19 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        self._cli_args = self._parse_cli_args()
+        self._cli_params, self._cli_flags = self._parse_cli_args()
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
-        resolved_values = self._resolve_values(self._cli_args, overrides or {})
-        interactive = not resolved_values.pop("_no_interactive")
-        dry_run = resolved_values.pop("_dry_run")
-        run_name = resolved_values.pop("_run_name", None)
+        flags = self._cli_flags
+        resolved_values = self._resolve_values(self._cli_params, overrides or {})
 
         # Prompt for missing params (interactive mode)
-        self._prompt_missing(resolved_values, interactive=interactive)
+        self._prompt_missing(resolved_values, interactive=flags.interactive)
 
-        # Git info
+        # Git info and project
         git_info = _collect_git_info()
-        project = self.wandb_project or git_info.get("repo")
+        project = flags.wandb_project or self.wandb_project or git_info.get("repo")
         if project is None:
             msg = (
                 "Cannot determine project name:"
@@ -239,28 +248,26 @@ class Runner:
             run_tags.append("dirty-git")
 
         # Dry-run: show command without W&B or output dir
-        if dry_run:
+        if flags.dry_run:
             cmd = self._build_command(resolved_values)
             print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Run name: {run_name or '(auto)'}")
+            print(f"[dry-run] Run name: {flags.run_name or '(auto)'}")
             print(f"[dry-run] Tags: {run_tags}")
             print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
             return
 
-        config = {
-            **{
-                f"param/{k}": v
-                for k, v in resolved_values.items()
-                if not k.startswith("_")
-            },
-            **{f"git/{k}": v for k, v in git_info.items()},
-            "meta/hostname": os.uname().nodename,
-            "meta/datetime": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-            "meta/command": shlex.join(self.command),
+        # W&B init
+        config: dict[str, object] = {
+            f"param/{k}": v for k, v in resolved_values.items()
         }
+        for k, v in git_info.items():
+            config[f"git/{k}"] = v
+        config["meta/hostname"] = os.uname().nodename
+        config["meta/datetime"] = datetime.datetime.now(tz=datetime.UTC).isoformat()
+        config["meta/command"] = shlex.join(self.command)
         wb_run = wandb.init(
             project=project,
-            name=run_name,
+            name=flags.run_name,
             group=self.group,
             tags=run_tags,
             save_code=True,
@@ -276,7 +283,7 @@ class Runner:
         # Save code snapshot (git archive + dirty diff)
         _save_code_snapshot(wb_run, output_dir, git_info)
 
-        # Interpolate $output in fixed-value params
+        # Interpolate $output in param values
         param_values = self._interpolate_output(resolved_values, output_dir)
 
         # Log input files (log_when == "before")
@@ -294,8 +301,28 @@ class Runner:
         # Execute
         exit_code, duration, stdout_text = self._execute(cmd, output_dir)
 
-        # --- Post-run: never raise, always try to finish W&B run ---
-        status = "failed" if exit_code != 0 else "success"
+        # Post-run: never raise, always try to finish W&B run
+        self._post_run(
+            wb_run,
+            param_values,
+            output_dir,
+            exit_code,
+            duration,
+            stdout_text,
+            run_tags,
+        )
+
+    def _post_run(
+        self,
+        wb_run: _WBRun,
+        param_values: dict,
+        output_dir: Path,
+        exit_code: int,
+        duration: float,
+        stdout_text: str,
+        run_tags: list[str],
+    ) -> None:
+        status = "success" if exit_code == 0 else "failed"
         summary = {
             "exit_code": exit_code,
             "duration_seconds": duration,
@@ -329,7 +356,7 @@ class Runner:
     # CLI parsing
     # -----------------------------------------------------------------------
 
-    def _parse_cli_args(self) -> dict:
+    def _parse_cli_args(self) -> tuple[dict, _RunFlags]:
         parser = argparse.ArgumentParser(
             description="genai_runner experiment launcher",
             formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -358,7 +385,8 @@ class Runner:
                 "help": argparse.SUPPRESS if p.hidden else (p.help or None),
             }
             if p._primary_type == "bool":
-                kwargs.update(action="store_true", default=False)
+                kwargs["action"] = "store_true"
+                kwargs["default"] = False
             else:
                 if p._primary_type not in _PARAM_TYPE_MAP:
                     msg = f"Unknown param type '{p._primary_type}' for param '{p.name}'"
@@ -375,18 +403,19 @@ class Runner:
                         ).strip()
             if p.choices:
                 kwargs["choices"] = p.choices
-            assert p.flag is not None
             parser.add_argument(p.flag, dest=p.dest, **kwargs)
 
         ns = parser.parse_args()
-        result = {
+        params = {
             p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
         }
-        result["_dry_run"] = ns.dry_run
-        result["_no_interactive"] = ns.no_interactive
-        result["_run_name"] = ns.run_name
-        self.wandb_project = ns.wandb_project or self.wandb_project
-        return result
+        flags = _RunFlags(
+            dry_run=ns.dry_run,
+            interactive=not ns.no_interactive,
+            run_name=ns.run_name,
+            wandb_project=ns.wandb_project,
+        )
+        return params, flags
 
     # -----------------------------------------------------------------------
     # Resolve values: apply overrides and callable defaults
@@ -483,15 +512,14 @@ class Runner:
         out = str(output_dir)
         for p in self.params:
             val = result.get(p.dest)
-            if val is None:
+            if val is None or not _contains_output(val):
                 continue
             if isinstance(val, list):
-                if any("$output" in str(v) for v in val):
-                    interpolated = [str(v).replace("$output", out) for v in val]
-                    Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
-                    result[p.dest] = interpolated
-            elif isinstance(val, str) and "$output" in val:
-                new_val = val.replace("$output", out)
+                interpolated = [str(v).replace("$output", out) for v in val]
+                Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
+                result[p.dest] = interpolated
+            else:
+                new_val = str(val).replace("$output", out)
                 Path(new_val).parent.mkdir(parents=True, exist_ok=True)
                 result[p.dest] = new_val
         return result

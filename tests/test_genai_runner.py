@@ -22,8 +22,6 @@ from genai_runner import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_BUILTIN_FLAGS = {"_dry_run": False, "_no_interactive": True}
-
 _FAKE_GIT_INFO = {
     "repo": "test-repo",
     "commit": "abc",
@@ -240,20 +238,20 @@ def test_param_types_property_list():
 def test_parse_basic_args():
     with patch("sys.argv", ["prog", "--prompt", "a cat", "--seed", "99"]):
         runner = _make_runner([Param("prompt"), Param("seed", type="int", default=42)])
-    assert runner._cli_args["prompt"] == "a cat"
-    assert runner._cli_args["seed"] == 99
+    assert runner._cli_params["prompt"] == "a cat"
+    assert runner._cli_params["seed"] == 99
 
 
 def test_parse_bool_flag():
     with patch("sys.argv", ["prog", "--verbose"]):
         runner = _make_runner([Param("verbose", type="bool")])
-    assert runner._cli_args["verbose"] is True
+    assert runner._cli_params["verbose"] is True
 
 
 def test_parse_bool_flag_absent():
     with patch("sys.argv", ["prog"]):
         runner = _make_runner([Param("verbose", type="bool")])
-    assert runner._cli_args["verbose"] is False
+    assert runner._cli_params["verbose"] is False
 
 
 def test_fixed_params_not_in_argparse():
@@ -261,8 +259,8 @@ def test_fixed_params_not_in_argparse():
         runner = _make_runner(
             [Param("prompt"), Param("output-path", value="$output/video.mp4")]
         )
-    assert "prompt" in runner._cli_args
-    assert "output_path" not in runner._cli_args
+    assert "prompt" in runner._cli_params
+    assert "output_path" not in runner._cli_params
 
 
 def test_parse_choices():
@@ -270,7 +268,7 @@ def test_parse_choices():
         runner = _make_runner(
             [Param("mode", choices=["fast", "quality"], default="fast")]
         )
-    assert runner._cli_args["mode"] == "quality"
+    assert runner._cli_params["mode"] == "quality"
 
 
 def test_parse_type_list():
@@ -285,7 +283,7 @@ def test_parse_type_list():
             ]
         )
     # argparse returns strings; casting happens in _resolve_values
-    assert runner._cli_args["image"] == ["photo.jpg", "0", "0.8"]
+    assert runner._cli_params["image"] == ["photo.jpg", "0", "0.8"]
 
 
 def test_parse_types_with_spaces_in_path():
@@ -293,20 +291,20 @@ def test_parse_types_with_spaces_in_path():
         "sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]
     ):
         runner = _make_runner([Param("image", type=["path", "float", "float"])])
-    assert runner._cli_args["image"] == ["path/to something/img.jpg", "0", "0.8"]
+    assert runner._cli_params["image"] == ["path/to something/img.jpg", "0", "0.8"]
 
 
 def test_builtin_flags():
     with patch("sys.argv", ["prog", "--dry-run", "--no-interactive"]):
         runner = _make_runner()
-    assert runner._cli_args["_dry_run"] is True
-    assert runner._cli_args["_no_interactive"] is True
+    assert runner._cli_flags.dry_run is True
+    assert runner._cli_flags.interactive is False
 
 
 def test_wandb_project_override():
     with patch("sys.argv", ["prog", "--wandb-project", "my-project"]):
         runner = _make_runner()
-    assert runner.wandb_project == "my-project"
+    assert runner._cli_flags.wandb_project == "my-project"
 
 
 def test_unknown_param_type_raises():
@@ -321,9 +319,7 @@ def test_unknown_param_type_raises():
 
 def test_overrides_take_priority():
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    resolved = runner._resolve_values(
-        {"seed": 99, **_BUILTIN_FLAGS}, overrides={"seed": 777}
-    )
+    resolved = runner._resolve_values({"seed": 99}, overrides={"seed": 777})
     assert resolved["seed"] == 777
 
 
@@ -331,26 +327,23 @@ def test_callable_default():
     runner = Runner(
         command="echo", params=[Param("path", default=lambda: "/computed/path")]
     )
-    resolved = runner._resolve_values({"path": None, **_BUILTIN_FLAGS}, overrides={})
+    resolved = runner._resolve_values({"path": None}, overrides={})
     assert resolved["path"] == "/computed/path"
 
 
 def test_cli_value_beats_default():
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    resolved = runner._resolve_values({"seed": 99, **_BUILTIN_FLAGS}, overrides={})
+    resolved = runner._resolve_values({"seed": 99}, overrides={})
     assert resolved["seed"] == 99
 
 
 def test_resolve_casts_type_list():
     runner = Runner(
         command="echo",
-        params=[
-            Param("image", type=["path", "int", "float"]),
-        ],
+        params=[Param("image", type=["path", "int", "float"])],
     )
     resolved = runner._resolve_values(
-        {"image": ["photo.jpg", "5", "0.8"], **_BUILTIN_FLAGS},
-        overrides={},
+        {"image": ["photo.jpg", "5", "0.8"]}, overrides={}
     )
     assert resolved["image"] == ["photo.jpg", 5, 0.8]
 
@@ -366,7 +359,7 @@ def test_resolve_casts_default_list():
             ),
         ],
     )
-    resolved = runner._resolve_values({"image": None, **_BUILTIN_FLAGS}, overrides={})
+    resolved = runner._resolve_values({"image": None}, overrides={})
     assert resolved["image"] == ["img.jpg", 0.0, 0.8]
 
 
@@ -375,7 +368,7 @@ def test_resolve_fixed_callable():
         command="echo",
         params=[Param("out", value=lambda: "/computed")],
     )
-    resolved = runner._resolve_values({**_BUILTIN_FLAGS}, overrides={})
+    resolved = runner._resolve_values({}, overrides={})
     assert resolved["out"] == "/computed"
 
 
@@ -384,9 +377,7 @@ def test_resolve_fixed_override():
         command="echo",
         params=[Param("out", value="$output/video.mp4")],
     )
-    resolved = runner._resolve_values(
-        {**_BUILTIN_FLAGS}, overrides={"out": "/override/video.mp4"}
-    )
+    resolved = runner._resolve_values({}, overrides={"out": "/override/video.mp4"})
     assert resolved["out"] == "/override/video.mp4"
 
 
