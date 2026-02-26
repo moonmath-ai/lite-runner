@@ -739,7 +739,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     with (
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._save_code_snapshot"),
+        patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
@@ -771,7 +771,7 @@ def test_full_run_explicit_group(tmp_path):
     with (
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._save_code_snapshot"),
+        patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()

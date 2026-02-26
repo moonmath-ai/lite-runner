@@ -309,7 +309,7 @@ class Runner:
         if runner_flags.dry_run:
             print("[dry-run] Saving code snapshot")
         else:
-            _save_code_snapshot(wb_run, output_dir, git_info)
+            _log_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in param values
         param_values = self._interpolate_output(resolved_params, output_dir)
@@ -357,7 +357,7 @@ class Runner:
         stdout_text: str,
         run_tags: list[str],
     ) -> None:
-        status = "success" if exit_code == 0 else "failed"
+        status = "success" if exit_code == 0 else "failed"  # TODO: add status: aborted
         summary = {
             "exit_code": exit_code,
             "duration_seconds": duration,
@@ -850,7 +850,7 @@ def _collect_git_info() -> dict:
         return {}
 
 
-def _save_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None:
+def _log_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None:
     """Save a full code snapshot: git archive + dirty diff."""
     if not git_info:
         return
