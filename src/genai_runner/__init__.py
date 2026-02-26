@@ -135,7 +135,7 @@ class Param:
     @property
     def types(self) -> list[str] | None:
         """Per-element types for multi-value params, or None for single-value."""
-        return list(self.type) if isinstance(self.type, list) else None
+        return list[str](self.type) if isinstance(self.type, list) else None
 
     @property
     def dest(self) -> str:
@@ -249,7 +249,7 @@ class Runner:
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
-        resolved_values = self._resolve_values(self.parsed_params, overrides or {})
+        resolved_values = self._resolve_params(self.parsed_params, overrides or {})
 
         # Prompt for missing params (interactive mode)
         self._prompt_missing(resolved_values, interactive=runner_flags.interactive)
@@ -421,19 +421,23 @@ class Runner:
     # Resolve values: apply overrides and callable defaults
     # -----------------------------------------------------------------------
 
-    def _resolve_values(self, cli_args: dict, overrides: dict) -> dict:
-        resolved = dict(cli_args)
+    def _resolve_params(self, parsed_params: dict, overrides: dict) -> dict:
+        resolved_params = dict(parsed_params)
         for p in self.params:
             if p.dest in overrides:
-                resolved[p.dest] = overrides[p.dest]
+                resolved_params[p.dest] = overrides[p.dest]
             elif p.is_fixed:
-                resolved[p.dest] = p.value() if callable(p.value) else p.value
-            elif resolved.get(p.dest) is None and p.default is not None:
-                resolved[p.dest] = p.default() if callable(p.default) else p.default
+                resolved_params[p.dest] = p.value() if callable(p.value) else p.value
+            elif resolved_params.get(p.dest) is not None:
+                pass
+            elif p.default is not None:
+                resolved_params[p.dest] = (
+                    p.default() if callable(p.default) else p.default
+                )
             # Cast multi-value args to per-element types
-            if p.types and resolved.get(p.dest) is not None:
-                resolved[p.dest] = _cast_nargs(resolved[p.dest], p.types)
-        return resolved
+            if p.types and resolved_params.get(p.dest) is not None:
+                resolved_params[p.dest] = _cast_nargs(resolved_params[p.dest], p.types)
+        return resolved_params
 
     # -----------------------------------------------------------------------
     # Interactive prompts

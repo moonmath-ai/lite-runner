@@ -319,7 +319,7 @@ def test_unknown_param_type_raises():
 
 def test_overrides_take_priority():
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    resolved = runner._resolve_values({"seed": 99}, overrides={"seed": 777})
+    resolved = runner._resolve_params({"seed": 99}, overrides={"seed": 777})
     assert resolved["seed"] == 777
 
 
@@ -327,13 +327,13 @@ def test_callable_default():
     runner = Runner(
         command="echo", params=[Param("path", default=lambda: "/computed/path")]
     )
-    resolved = runner._resolve_values({"path": None}, overrides={})
+    resolved = runner._resolve_params({"path": None}, overrides={})
     assert resolved["path"] == "/computed/path"
 
 
 def test_cli_value_beats_default():
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    resolved = runner._resolve_values({"seed": 99}, overrides={})
+    resolved = runner._resolve_params({"seed": 99}, overrides={})
     assert resolved["seed"] == 99
 
 
@@ -342,7 +342,7 @@ def test_resolve_casts_type_list():
         command="echo",
         params=[Param("image", type=["path", "int", "float"])],
     )
-    resolved = runner._resolve_values(
+    resolved = runner._resolve_params(
         {"image": ["photo.jpg", "5", "0.8"]}, overrides={}
     )
     assert resolved["image"] == ["photo.jpg", 5, 0.8]
@@ -359,7 +359,7 @@ def test_resolve_casts_default_list():
             ),
         ],
     )
-    resolved = runner._resolve_values({"image": None}, overrides={})
+    resolved = runner._resolve_params({"image": None}, overrides={})
     assert resolved["image"] == ["img.jpg", 0.0, 0.8]
 
 
@@ -368,7 +368,7 @@ def test_resolve_fixed_callable():
         command="echo",
         params=[Param("out", value=lambda: "/computed")],
     )
-    resolved = runner._resolve_values({}, overrides={})
+    resolved = runner._resolve_params({}, overrides={})
     assert resolved["out"] == "/computed"
 
 
@@ -377,7 +377,7 @@ def test_resolve_fixed_override():
         command="echo",
         params=[Param("out", value="$output/video.mp4")],
     )
-    resolved = runner._resolve_values({}, overrides={"out": "/override/video.mp4"})
+    resolved = runner._resolve_params({}, overrides={"out": "/override/video.mp4"})
     assert resolved["out"] == "/override/video.mp4"
 
 
