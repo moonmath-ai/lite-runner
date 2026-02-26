@@ -244,12 +244,12 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        self.target_params, self.runner_flags = self._parse_cli_args()
+        self.parsed_params, self.runner_flags = self._parse_cli_args()
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
-        resolved_values = self._resolve_values(self.target_params, overrides or {})
+        resolved_values = self._resolve_values(self.parsed_params, overrides or {})
 
         # Prompt for missing params (interactive mode)
         self._prompt_missing(resolved_values, interactive=runner_flags.interactive)
@@ -406,7 +406,7 @@ class Runner:
                 parser.add_argument(p.flag, **p._argparse_kwargs())
 
         ns = parser.parse_args()
-        target_params = {
+        parsed_params = {
             p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
         }
         runner_flags = _RunFlags(
@@ -415,7 +415,7 @@ class Runner:
             run_name=ns.run_name,
             wandb_project=ns.wandb_project,
         )
-        return target_params, runner_flags
+        return parsed_params, runner_flags
 
     # -----------------------------------------------------------------------
     # Resolve values: apply overrides and callable defaults

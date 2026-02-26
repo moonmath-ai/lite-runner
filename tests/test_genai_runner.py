@@ -238,20 +238,20 @@ def test_param_types_property_list():
 def test_parse_basic_args():
     with patch("sys.argv", ["prog", "--prompt", "a cat", "--seed", "99"]):
         runner = _make_runner([Param("prompt"), Param("seed", type="int", default=42)])
-    assert runner.target_params["prompt"] == "a cat"
-    assert runner.target_params["seed"] == 99
+    assert runner.parsed_params["prompt"] == "a cat"
+    assert runner.parsed_params["seed"] == 99
 
 
 def test_parse_bool_flag():
     with patch("sys.argv", ["prog", "--verbose"]):
         runner = _make_runner([Param("verbose", type="bool")])
-    assert runner.target_params["verbose"] is True
+    assert runner.parsed_params["verbose"] is True
 
 
 def test_parse_bool_flag_absent():
     with patch("sys.argv", ["prog"]):
         runner = _make_runner([Param("verbose", type="bool")])
-    assert runner.target_params["verbose"] is False
+    assert runner.parsed_params["verbose"] is False
 
 
 def test_fixed_params_not_in_argparse():
@@ -259,8 +259,8 @@ def test_fixed_params_not_in_argparse():
         runner = _make_runner(
             [Param("prompt"), Param("output-path", value="$output/video.mp4")]
         )
-    assert "prompt" in runner.target_params
-    assert "output_path" not in runner.target_params
+    assert "prompt" in runner.parsed_params
+    assert "output_path" not in runner.parsed_params
 
 
 def test_parse_choices():
@@ -268,7 +268,7 @@ def test_parse_choices():
         runner = _make_runner(
             [Param("mode", choices=["fast", "quality"], default="fast")]
         )
-    assert runner.target_params["mode"] == "quality"
+    assert runner.parsed_params["mode"] == "quality"
 
 
 def test_parse_type_list():
@@ -283,7 +283,7 @@ def test_parse_type_list():
             ]
         )
     # argparse returns strings; casting happens in _resolve_values
-    assert runner.target_params["image"] == ["photo.jpg", "0", "0.8"]
+    assert runner.parsed_params["image"] == ["photo.jpg", "0", "0.8"]
 
 
 def test_parse_types_with_spaces_in_path():
@@ -291,7 +291,7 @@ def test_parse_types_with_spaces_in_path():
         "sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]
     ):
         runner = _make_runner([Param("image", type=["path", "float", "float"])])
-    assert runner.target_params["image"] == ["path/to something/img.jpg", "0", "0.8"]
+    assert runner.parsed_params["image"] == ["path/to something/img.jpg", "0", "0.8"]
 
 
 def test_builtin_flags():
