@@ -47,6 +47,13 @@ def _mock_wb_run(**overrides) -> MagicMock:
     return run
 
 
+@pytest.fixture(autouse=True)
+def _clean_argv():
+    """Ensure Runner.__post_init__ sees a clean sys.argv in every test."""
+    with patch("sys.argv", ["prog"]):
+        yield
+
+
 def _make_runner(params=None, **kwargs):
     return Runner(
         command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
@@ -231,78 +238,74 @@ def test_param_types_property_list():
 
 
 def test_parse_basic_args():
-    runner = _make_runner([Param("prompt"), Param("seed", type="int", default=42)])
     with patch("sys.argv", ["prog", "--prompt", "a cat", "--seed", "99"]):
-        args = runner._parse_cli_args()
-    assert args["prompt"] == "a cat"
-    assert args["seed"] == 99
+        runner = _make_runner([Param("prompt"), Param("seed", type="int", default=42)])
+    assert runner._cli_args["prompt"] == "a cat"
+    assert runner._cli_args["seed"] == 99
 
 
 def test_parse_bool_flag():
-    runner = _make_runner([Param("verbose", type="bool")])
     with patch("sys.argv", ["prog", "--verbose"]):
-        assert runner._parse_cli_args()["verbose"] is True
+        runner = _make_runner([Param("verbose", type="bool")])
+    assert runner._cli_args["verbose"] is True
 
 
 def test_parse_bool_flag_absent():
-    runner = _make_runner([Param("verbose", type="bool")])
     with patch("sys.argv", ["prog"]):
-        assert runner._parse_cli_args()["verbose"] is False
+        runner = _make_runner([Param("verbose", type="bool")])
+    assert runner._cli_args["verbose"] is False
 
 
 def test_fixed_params_not_in_argparse():
-    runner = _make_runner(
-        [Param("prompt"), Param("output-path", value="$output/video.mp4")]
-    )
     with patch("sys.argv", ["prog", "--prompt", "hi"]):
-        args = runner._parse_cli_args()
-    assert "prompt" in args
-    assert "output_path" not in args
+        runner = _make_runner(
+            [Param("prompt"), Param("output-path", value="$output/video.mp4")]
+        )
+    assert "prompt" in runner._cli_args
+    assert "output_path" not in runner._cli_args
 
 
 def test_parse_choices():
-    runner = _make_runner([Param("mode", choices=["fast", "quality"], default="fast")])
     with patch("sys.argv", ["prog", "--mode", "quality"]):
-        assert runner._parse_cli_args()["mode"] == "quality"
+        runner = _make_runner(
+            [Param("mode", choices=["fast", "quality"], default="fast")]
+        )
+    assert runner._cli_args["mode"] == "quality"
 
 
 def test_parse_type_list():
-    runner = _make_runner(
-        [
-            Param(
-                "image",
-                type=["path", "float", "float"],
-                labels=["path", "start", "strength"],
-            )
-        ]
-    )
     with patch("sys.argv", ["prog", "--image", "photo.jpg", "0", "0.8"]):
-        args = runner._parse_cli_args()
+        runner = _make_runner(
+            [
+                Param(
+                    "image",
+                    type=["path", "float", "float"],
+                    labels=["path", "start", "strength"],
+                )
+            ]
+        )
     # argparse returns strings; casting happens in _resolve_values
-    assert args["image"] == ["photo.jpg", "0", "0.8"]
+    assert runner._cli_args["image"] == ["photo.jpg", "0", "0.8"]
 
 
 def test_parse_types_with_spaces_in_path():
-    runner = _make_runner([Param("image", type=["path", "float", "float"])])
     with patch(
         "sys.argv", ["prog", "--image", "path/to something/img.jpg", "0", "0.8"]
     ):
-        args = runner._parse_cli_args()
-    assert args["image"] == ["path/to something/img.jpg", "0", "0.8"]
+        runner = _make_runner([Param("image", type=["path", "float", "float"])])
+    assert runner._cli_args["image"] == ["path/to something/img.jpg", "0", "0.8"]
 
 
 def test_builtin_flags():
-    runner = _make_runner()
     with patch("sys.argv", ["prog", "--dry-run", "--no-interactive"]):
-        args = runner._parse_cli_args()
-    assert args["_dry_run"] is True
-    assert args["_no_interactive"] is True
+        runner = _make_runner()
+    assert runner._cli_args["_dry_run"] is True
+    assert runner._cli_args["_no_interactive"] is True
 
 
 def test_wandb_project_override():
-    runner = _make_runner()
     with patch("sys.argv", ["prog", "--wandb-project", "my-project"]):
-        runner._parse_cli_args()
+        runner = _make_runner()
     assert runner.wandb_project == "my-project"
 
 
@@ -639,16 +642,19 @@ def test_execute_env_vars_passed(tmp_path):
 
 
 def test_dry_run_prints_command_no_wandb(capsys):
-    runner = Runner(
-        command="python gen.py",
-        params=[
-            Param("prompt"),
-            Param("seed", type="int", default=42),
-            Param("output-path", value="$output/video.mp4", type="path-video"),
-        ],
-    )
-    with patch("sys.argv", ["prog", "--dry-run", "--prompt", "test", "--no-interactive"]):
-        runner.run()
+    with patch(
+        "sys.argv",
+        ["prog", "--dry-run", "--prompt", "test", "--no-interactive"],
+    ):
+        runner = Runner(
+            command="python gen.py",
+            params=[
+                Param("prompt"),
+                Param("seed", type="int", default=42),
+                Param("output-path", value="$output/video.mp4", type="path-video"),
+            ],
+        )
+    runner.run()
     captured = capsys.readouterr()
     assert "[dry-run]" in captured.out
     assert "--prompt test" in captured.out
@@ -667,22 +673,24 @@ def test_full_run_with_mocked_wandb(tmp_path):
     mock_wb.init.return_value = wb_run
     mock_wb.Artifact = MagicMock()
 
-    runner = Runner(
-        command=(
-            f"{sys.executable} -c"
-            " \"import sys; print('hello');"
-            " print('err', file=sys.stderr)\""
-        ),
-        params=[Param("output-path", value="$output/video.mp4", type="path-video")],
-        metrics=[Metric("val", pattern=r"no-match")],
-    )
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(
+            command=(
+                f"{sys.executable} -c"
+                " \"import sys; print('hello');"
+                " print('err', file=sys.stderr)\""
+            ),
+            params=[
+                Param("output-path", value="$output/video.mp4", type="path-video"),
+            ],
+            metrics=[Metric("val", pattern=r"no-match")],
+        )
 
     with (
-        patch("sys.argv", ["prog", "--no-interactive"]),
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._save_code_snapshot"),
-        patch("genai_runner.Path.home", return_value=tmp_path),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -703,18 +711,18 @@ def test_full_run_explicit_group(tmp_path):
     mock_wb.init.return_value = wb_run
     mock_wb.Artifact = MagicMock()
 
-    runner = Runner(
-        command=f"{sys.executable} -c \"print('ok')\"",
-        params=[],
-        group="my-sweep",
-    )
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(
+            command=f"{sys.executable} -c \"print('ok')\"",
+            params=[],
+            group="my-sweep",
+        )
 
     with (
-        patch("sys.argv", ["prog", "--no-interactive"]),
         patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._save_code_snapshot"),
-        patch("genai_runner.Path.home", return_value=tmp_path),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
