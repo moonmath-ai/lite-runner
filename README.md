@@ -1,6 +1,6 @@
 # genai-runner
 
-Experiment runner for video diffusion models with W&B tracking.
+Experiment runner for generative models with W&B tracking.
 
 Write a small Python script per model that declares params, outputs, and metrics.
 `genai-runner` handles the rest: CLI parsing, interactive prompts for missing values,
