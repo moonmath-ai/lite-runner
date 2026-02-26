@@ -416,19 +416,17 @@ def test_no_missing_params_is_noop():
 
 def test_interactive_fills_from_questionary():
     runner = Runner(command="echo", params=[Param("prompt")])
-    resolved = {"prompt": None}
     with patch("genai_runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
-        runner._prompt_missing(resolved, interactive=True)
+        resolved = runner._prompt_missing({"prompt": None}, interactive=True)
     assert resolved["prompt"] == "a cat"
 
 
 def test_interactive_select_for_choices():
     runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
-    resolved = {"mode": None}
     with patch("genai_runner.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
-        runner._prompt_missing(resolved, interactive=True)
+        resolved = runner._prompt_missing({"mode": None}, interactive=True)
     assert resolved["mode"] == "fast"
 
 
@@ -443,12 +441,11 @@ def test_interactive_type_list_prompts_each_part():
             ),
         ],
     )
-    resolved = {"image": None}
     answers = iter(["0", "0.8"])
     with patch("genai_runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
-        runner._prompt_missing(resolved, interactive=True)
+        resolved = runner._prompt_missing({"image": None}, interactive=True)
     # After prompting, types are cast: str, float, float
     assert resolved["image"] == ["photo.jpg", 0.0, 0.8]
 
@@ -456,10 +453,9 @@ def test_interactive_type_list_prompts_each_part():
 def test_interactive_path_image_uses_path_widget():
     """path-image type should use questionary.path() widget."""
     runner = Runner(command="echo", params=[Param("img", type="path-image")])
-    resolved = {"img": None}
     with patch("genai_runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
-        runner._prompt_missing(resolved, interactive=True)
+        resolved = runner._prompt_missing({"img": None}, interactive=True)
     mock_q.path.assert_called_once()
     assert resolved["img"] == "/tmp/photo.jpg"
 

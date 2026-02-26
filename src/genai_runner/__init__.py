@@ -252,7 +252,9 @@ class Runner:
 
         # Resolve params and prompt for missing ones
         resolved_params = self._resolve_params(self.parsed_params, overrides or {})
-        self._prompt_missing(resolved_params, interactive=runner_flags.interactive)
+        resolved_params = self._prompt_missing(
+            resolved_params, interactive=runner_flags.interactive
+        )
 
         # Git info and project
         git_info = _collect_git_info()
@@ -456,7 +458,8 @@ class Runner:
     # Interactive prompts
     # -----------------------------------------------------------------------
 
-    def _prompt_missing(self, resolved_params: dict, *, interactive: bool) -> None:
+    def _prompt_missing(self, resolved_params: dict, *, interactive: bool) -> dict:
+        resolved_params = dict(resolved_params)
         missing = [
             p
             for p in self.params
@@ -464,7 +467,7 @@ class Runner:
         ]
 
         if not missing:
-            return
+            return resolved_params
 
         if not interactive:
             names = [p.name for p in missing]
@@ -484,6 +487,8 @@ class Runner:
                 resolved_params[p.dest] = self._prompt_nargs(p)
             else:
                 resolved_params[p.dest] = self._prompt_single(p)
+
+        return resolved_params
 
     def _prompt_single(self, p: Param) -> int | float | str:
         label = p.help or p.name
