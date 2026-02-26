@@ -392,12 +392,10 @@ class Runner:
     def _resolve_values(self, cli_args: dict, overrides: dict) -> dict:
         resolved = dict(cli_args)
         for p in self.params:
-            if p.is_fixed:
-                continue
-            # Override from run(overrides=...) takes priority over CLI
             if p.dest in overrides:
                 resolved[p.dest] = overrides[p.dest]
-            # Apply callable defaults (only if not overridden)
+            elif p.is_fixed:
+                resolved[p.dest] = p.value() if callable(p.value) else p.value
             elif resolved.get(p.dest) is None and p.default is not None:
                 resolved[p.dest] = p.default() if callable(p.default) else p.default
             # Cast multi-value args to per-element types
@@ -477,22 +475,22 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _interpolate_output(self, resolved: dict, output_dir: Path) -> dict:
-        """Return a copy of resolved with $output replaced in fixed-value params."""
+        """Return a copy of resolved with $output replaced in any values."""
         result = dict(resolved)
         out = str(output_dir)
         for p in self.params:
-            if not p.is_fixed:
+            val = result.get(p.dest)
+            if val is None:
                 continue
-            if isinstance(p.value, list):
-                interpolated = [str(v).replace("$output", out) for v in p.value]
-                if any("$output" in str(v) for v in p.value):
+            if isinstance(val, list):
+                if any("$output" in str(v) for v in val):
+                    interpolated = [str(v).replace("$output", out) for v in val]
                     Path(interpolated[0]).parent.mkdir(parents=True, exist_ok=True)
-                result[p.dest] = interpolated
-            else:
-                val = str(p.value).replace("$output", out)
-                if "$output" in str(p.value):
-                    Path(val).parent.mkdir(parents=True, exist_ok=True)
-                result[p.dest] = val
+                    result[p.dest] = interpolated
+            elif isinstance(val, str) and "$output" in val:
+                new_val = val.replace("$output", out)
+                Path(new_val).parent.mkdir(parents=True, exist_ok=True)
+                result[p.dest] = new_val
         return result
 
     # -----------------------------------------------------------------------

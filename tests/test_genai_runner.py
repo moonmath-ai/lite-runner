@@ -365,6 +365,26 @@ def test_resolve_casts_default_list():
     assert resolved["image"] == ["img.jpg", 0.0, 0.8]
 
 
+def test_resolve_fixed_callable():
+    runner = Runner(
+        command="echo",
+        params=[Param("out", value=lambda: "/computed")],
+    )
+    resolved = runner._resolve_values({**_BUILTIN_FLAGS}, overrides={})
+    assert resolved["out"] == "/computed"
+
+
+def test_resolve_fixed_override():
+    runner = Runner(
+        command="echo",
+        params=[Param("out", value="$output/video.mp4")],
+    )
+    resolved = runner._resolve_values(
+        {**_BUILTIN_FLAGS}, overrides={"out": "/override/video.mp4"}
+    )
+    assert resolved["out"] == "/override/video.mp4"
+
+
 # ---------------------------------------------------------------------------
 # Prompt missing
 # ---------------------------------------------------------------------------
@@ -446,7 +466,7 @@ def test_interactive_cancel_exits():
 
 def test_interpolate_replaces_output_in_string(tmp_path):
     runner = Runner(command="echo", params=[Param("out", value="$output/video.mp4")])
-    result = runner._interpolate_output({}, tmp_path)
+    result = runner._interpolate_output({"out": "$output/video.mp4"}, tmp_path)
     assert result["out"] == f"{tmp_path}/video.mp4"
 
 
@@ -454,19 +474,23 @@ def test_interpolate_replaces_output_in_list(tmp_path):
     runner = Runner(
         command="echo", params=[Param("img", value=["$output/img.jpg", "0", "0.8"])]
     )
-    result = runner._interpolate_output({}, tmp_path)
+    result = runner._interpolate_output(
+        {"img": ["$output/img.jpg", "0", "0.8"]}, tmp_path
+    )
     assert result["img"] == [f"{tmp_path}/img.jpg", "0", "0.8"]
 
 
 def test_interpolate_non_output_unchanged(tmp_path):
     runner = Runner(command="echo", params=[Param("config", value="/etc/config.toml")])
-    result = runner._interpolate_output({}, tmp_path)
+    result = runner._interpolate_output({"config": "/etc/config.toml"}, tmp_path)
     assert result["config"] == "/etc/config.toml"
 
 
 def test_interpolate_preserves_resolved_params(tmp_path):
     runner = Runner(command="echo", params=[Param("out", value="$output/video.mp4")])
-    result = runner._interpolate_output({"prompt": "a cat", "seed": 42}, tmp_path)
+    result = runner._interpolate_output(
+        {"out": "$output/video.mp4", "prompt": "a cat", "seed": 42}, tmp_path
+    )
     assert result["prompt"] == "a cat"
     assert result["seed"] == 42
 
@@ -661,7 +685,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
     assert "[dry-run]" in captured.out
     assert "--prompt test" in captured.out
     assert "--seed 42" in captured.out
-    # $output assertion deferred to commit 6 (fixed params in _resolve_values)
+    assert "$output/video.mp4" in captured.out
     assert "Run name: (auto)" in captured.out
     assert "Tags: ['v1']" in captured.out
 
