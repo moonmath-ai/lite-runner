@@ -309,6 +309,11 @@ def test_wandb_project_override():
     assert runner.wandb_project == "my-project"
 
 
+def test_unknown_param_type_raises():
+    with pytest.raises(ValueError, match="Unknown param type 'banana'"):
+        Runner(command="echo", params=[Param("x", type="banana")])
+
+
 # ---------------------------------------------------------------------------
 # Resolve values
 # ---------------------------------------------------------------------------

@@ -360,7 +360,10 @@ class Runner:
             if p._primary_type == "bool":
                 kwargs.update(action="store_true", default=False)
             else:
-                kwargs["type"] = _PARAM_TYPE_MAP.get(p._primary_type, str)
+                if p._primary_type not in _PARAM_TYPE_MAP:
+                    msg = f"Unknown param type '{p._primary_type}' for param '{p.name}'"
+                    raise ValueError(msg)
+                kwargs["type"] = _PARAM_TYPE_MAP[p._primary_type]
                 if p.nargs is not None:
                     # Multi-value: argparse gets nargs=N, all as str
                     kwargs["nargs"] = p.nargs
