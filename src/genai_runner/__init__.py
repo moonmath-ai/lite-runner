@@ -683,7 +683,6 @@ class Runner:
 
     def _log_extra_outputs(self, wb_run: _WBRun, output_dir: Path) -> None:
         out = str(output_dir)
-        zip_counter = 0
         for o in self.outputs:
             raw_path = o.path.replace("$output", out)
             is_glob = any(c in raw_path for c in ("*", "?", "["))
@@ -713,14 +712,13 @@ class Runner:
                 )
                 continue
 
+            label = o.name or base.name or "output"
             if o.log_as == "zip":
-                zip_counter = _zip_and_upload(
-                    wb_run, matches, base, output_dir, zip_counter
-                )
+                _zip_and_upload(wb_run, matches, base, output_dir, label)
             else:
                 for m in matches:
                     if m.is_file():
-                        _upload_file(wb_run, m, o.log_as)
+                        _upload_file(wb_run, m, o.log_as, label=label)
 
     def _log_run_logs(self, wb_run: _WBRun, output_dir: Path) -> None:
         existing_logs = [
@@ -801,18 +799,15 @@ def _zip_and_upload(
     matches: list[Path],
     base: Path,
     output_dir: Path,
-    zip_counter: int,
-) -> int:
-    """Zip matched files and upload as artifact. Returns incremented zip_counter."""
-    suffix = f"_{zip_counter}" if zip_counter else ""
-    zip_name = base.name or "output"
-    zip_path = output_dir / f"{zip_name}{suffix}.zip"
+    label: str,
+) -> None:
+    """Zip matched files and upload as artifact."""
+    zip_path = output_dir / f"{label}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for m in matches:
             if m.is_file():
                 zf.write(m, m.relative_to(base))
-    _upload_file(wb_run, zip_path, "artifact")
-    return zip_counter + 1
+    _upload_file(wb_run, zip_path, "artifact", label=label)
 
 
 def _upload_file(
