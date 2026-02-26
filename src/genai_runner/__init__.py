@@ -194,6 +194,9 @@ class Metric:
 # ---------------------------------------------------------------------------
 
 
+_RUNS_DIR = Path.home() / "genai_runs"
+
+
 @dataclass
 class Runner:
     command: str | list[str]
@@ -261,7 +264,7 @@ class Runner:
         # Output dir
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M")
         dir_name = wb_run.name or wb_run.id or "run"
-        output_dir = Path.home() / "genai_runs" / project / f"{timestamp}_{dir_name}"
+        output_dir = _RUNS_DIR / project / f"{timestamp}_{dir_name}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
