@@ -225,12 +225,18 @@ class Runner:
 
         # Git info
         git_info = _collect_git_info()
-        project = self.wandb_project or git_info.get("repo", "genai-runs")
+        project = self.wandb_project or git_info.get("repo")
+        if project is None:
+            msg = (
+                "Cannot determine project name:"
+                " set wandb_project= or run from a git repo"
+            )
+            raise ValueError(msg)
 
         # Dry-run: show command without W&B or output dir
         if dry_run:
             param_values = self._interpolate_output(
-                resolved,
+                resolved_values,
                 Path("/tmp/dry-run-output"),  # noqa: S108
             )
             cmd = self._build_command(param_values)

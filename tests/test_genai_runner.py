@@ -662,6 +662,15 @@ def test_dry_run_prints_command_no_wandb(capsys):
     assert "--output-path /tmp/dry-run-output/video.mp4" in captured.out
 
 
+def test_no_project_raises_valueerror():
+    """Runner with no wandb_project and no git repo raises ValueError."""
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(command="echo", params=[])
+    with patch("genai_runner._collect_git_info", return_value={}):
+        with pytest.raises(ValueError, match="Cannot determine project name"):
+            runner.run()
+
+
 # ---------------------------------------------------------------------------
 # Full run (integration with mocked W&B)
 # ---------------------------------------------------------------------------
