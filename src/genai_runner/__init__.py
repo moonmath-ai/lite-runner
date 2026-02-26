@@ -249,9 +249,9 @@ class Runner:
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
-        resolved_params = self._resolve_params(self.parsed_params, overrides or {})
 
-        # Prompt for missing params (interactive mode)
+        # Resolve params and prompt for missing ones
+        resolved_params = self._resolve_params(self.parsed_params, overrides or {})
         self._prompt_missing(resolved_params, interactive=runner_flags.interactive)
 
         # Git info and project
@@ -266,16 +266,7 @@ class Runner:
             )
             raise ValueError(msg)
 
-        # Dry-run: show command without W&B or output dir
-        if runner_flags.dry_run:
-            cmd = self._build_command(resolved_params)
-            print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
-            print(f"[dry-run] Tags: {self.tags}")
-            print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
-            return
-
-        # W&B init
+        # Config
         config: dict[str, object] = {}
         for k, v in resolved_params.items():
             config[f"param/{k}"] = v
@@ -284,40 +275,65 @@ class Runner:
         timestamp = datetime.datetime.now(tz=datetime.UTC)
         config["meta/hostname"] = os.uname().nodename
         config["meta/datetime"] = timestamp.isoformat()
-        config["meta/command"] = shlex.join(self.command) 
-        wb_run = wandb.init(
-            project=project,
-            name=runner_flags.run_name,
-            group=self.group,
-            tags=self.tags,
-            save_code=True,
-            config=config,
-        )
+        config["meta/command"] = shlex.join(self.command)
+
+        # W&B init
+        if runner_flags.dry_run:
+            print(f"[dry-run] Project: {project}")
+            print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
+            print(f"[dry-run] Group: {self.group}")
+            print(f"[dry-run] Tags: {self.tags}")
+            print(f"[dry-run] Config: {config}")
+            run_name = runner_flags.run_name or "run"
+        else:
+            wb_run = wandb.init(
+                project=project,
+                name=runner_flags.run_name,
+                group=self.group,
+                tags=self.tags,
+                save_code=True,
+                config=config,
+            )
+            run_name = wb_run.name or wb_run.id or "run"
 
         # Output dir
-        dir_name = wb_run.name or wb_run.id or "run"
-        output_dir = _RUNS_DIR / project / f"{timestamp.strftime("%Y%m%d_%H%M")}_{dir_name}"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = (
+            _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
+        )
+        print(f"Output dir: {output_dir}")
+        if not runner_flags.dry_run:
+            wb_run.config.update({"meta/output_dir": str(output_dir)})
+            output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
-        _save_code_snapshot(wb_run, output_dir, git_info)
+        if runner_flags.dry_run:
+            print("[dry-run] Saving code snapshot")
+        else:
+            _save_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in param values
         param_values = self._interpolate_output(resolved_params, output_dir)
 
         # Log input files (log_when == "before")
-        self._log_files(wb_run, param_values, when="before")
+        if runner_flags.dry_run:
+            print(f"[dry-run] Logging input files")  # TODO: list files
+        else:   
+            self._log_files(wb_run, param_values, when="before")
+
+        if runner_flags.dry_run:
+            print("W&B run: <link to W&B run>")
+        else:
+            print(f"W&B run: {wb_run.url}")
 
         # Build command
         cmd = self._build_command(param_values)
-        wb_run.config.update({"meta/full_command": shlex.join(cmd)})
-
-        print(f"Output dir: {output_dir}")
-        print(f"W&B run: {wb_run.url}")
         print(f"Command:\n  {shlex.join(cmd)}")
-        print("=" * 60)
 
         # Execute
+        if runner_flags.dry_run:
+            return
+
+        print("=" * 60)
         exit_code, duration, stdout_text = self._execute(cmd, output_dir)
 
         # Post-run: never raise, always try to finish W&B run
