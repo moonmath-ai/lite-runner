@@ -767,30 +767,6 @@ def test_full_run_explicit_group(tmp_path):
 # ---------------------------------------------------------------------------
 # count_logged with path-* types
 # ---------------------------------------------------------------------------
-
-
-def test_count_logged_path_video():
-    runner = Runner(
-        command="echo",
-        params=[
-            Param("out", value="$output/video.mp4", type="path-video"),
-            Param("img", type="path-image"),
-        ],
-        outputs=[Output("extra.mp4", log_as="video")],
-    )
-    assert runner._count_logged("video") == 2  # param + output
-    assert runner._count_logged("image") == 1
-
-
-def test_count_logged_type_list():
-    runner = Runner(
-        command="echo",
-        params=[Param("img", type=["path-image", "float", "float"])],
-    )
-    assert runner._count_logged("image") == 1
-
-
-# ---------------------------------------------------------------------------
 # Output glob + zip
 # ---------------------------------------------------------------------------
 

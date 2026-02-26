@@ -740,15 +740,6 @@ class Runner:
             else:
                 wb_run.summary[m.name] = raw
 
-    def _count_logged(self, media_type: str) -> int:
-        """Count params and outputs that log as the given media type."""
-        return sum(
-            1
-            for p in self.params
-            for t in p.type_list
-            if _log_as_from_type(t) == media_type
-        ) + sum(1 for o in self.outputs if o.log_as == media_type)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
