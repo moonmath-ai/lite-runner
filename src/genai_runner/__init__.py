@@ -215,12 +215,13 @@ class Runner:
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
-        resolved = self._resolve_values(self._cli_args, overrides or {})
-        interactive = not resolved.pop("_no_interactive")
-        dry_run = resolved.pop("_dry_run")
+        resolved_values = self._resolve_values(self._cli_args, overrides or {})
+        interactive = not resolved_values.pop("_no_interactive")
+        dry_run = resolved_values.pop("_dry_run")
+        run_name = resolved_values.pop("_run_name", None)
 
         # Prompt for missing params (interactive mode)
-        self._prompt_missing(resolved, interactive=interactive)
+        self._prompt_missing(resolved_values, interactive=interactive)
 
         # Git info
         git_info = _collect_git_info()
@@ -242,24 +243,24 @@ class Runner:
         if git_info.get("dirty"):
             run_tags.append("dirty-git")
 
-        run_name = resolved.pop("_run_name", None)
+        config = {
+            **{
+                f"param/{k}": v
+                for k, v in resolved_values.items()
+                if not k.startswith("_")
+            },
+            **{f"git/{k}": v for k, v in git_info.items()},
+            "meta/hostname": os.uname().nodename,
+            "meta/datetime": datetime.datetime.now(tz=datetime.UTC).isoformat(),
+            "meta/command": shlex.join(self.command),
+        }
         wb_run = wandb.init(
             project=project,
             name=run_name,
             group=self.group,
             tags=run_tags,
             save_code=True,
-            config={
-                **{
-                    f"param/{k}": v
-                    for k, v in resolved.items()
-                    if not k.startswith("_")
-                },
-                **{f"git/{k}": v for k, v in git_info.items()},
-                "meta/hostname": os.uname().nodename,
-                "meta/datetime": datetime.datetime.now(tz=datetime.UTC).isoformat(),
-                "meta/command": shlex.join(self.command),
-            },
+            config=config,
         )
 
         # Output dir
@@ -272,7 +273,7 @@ class Runner:
         _save_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in fixed-value params
-        param_values = self._interpolate_output(resolved, output_dir)
+        param_values = self._interpolate_output(resolved_values, output_dir)
 
         # Log input files (log_when == "before")
         self._log_files(wb_run, param_values, when="before")
@@ -376,10 +377,8 @@ class Runner:
         }
         result["_dry_run"] = ns.dry_run
         result["_no_interactive"] = ns.no_interactive
-        if ns.run_name:
-            result["_run_name"] = ns.run_name
-        if ns.wandb_project:
-            self.wandb_project = ns.wandb_project
+        result["_run_name"] = ns.run_name
+        self.wandb_project = ns.wandb_project or self.wandb_project
         return result
 
     # -----------------------------------------------------------------------
@@ -793,7 +792,7 @@ def _collect_git_info() -> dict:
             "repo": git("rev-parse", "--show-toplevel").rsplit("/", 1)[-1],
             "commit": git("rev-parse", "HEAD"),
             "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-            "dirty": bool(git("status", "--porcelain")),
+            "dirty": git("status", "--porcelain") != "",
         }
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {}
