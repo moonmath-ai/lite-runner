@@ -92,7 +92,6 @@ class Param:
         labels: Names for each part, used in TUI prompts and --help
             metavar.  e.g. labels=["path", "start_frame", "strength"]
             prompts separately for each.
-        hidden: If True, not shown in --help.
         log_when: "before" (input file) or "after" (output file).
             Auto-inferred from $output in value when type encodes
             upload intent (path-image, path-video, etc.).
@@ -106,7 +105,6 @@ class Param:
     flag: str | None = None
     value: Any = None
     labels: list[str] | None = None
-    hidden: bool = False
     log_when: str | None = None
 
     def __post_init__(self) -> None:
@@ -383,7 +381,7 @@ class Runner:
                 continue
             kwargs: dict = {
                 "default": None,
-                "help": argparse.SUPPRESS if p.hidden else (p.help or None),
+                "help": p.help or None,
             }
             if p._primary_type == "bool":
                 kwargs["action"] = "store_true"
@@ -397,7 +395,7 @@ class Runner:
                     # Multi-value: argparse gets nargs=N, all as str
                     kwargs["nargs"] = p.nargs
                     kwargs["type"] = str
-                    if p.labels and not p.hidden:
+                    if p.labels:
                         kwargs["metavar"] = tuple(p.labels)
                         kwargs["help"] = (
                             f"{p.help or ''} ({' '.join(p.labels)})"
