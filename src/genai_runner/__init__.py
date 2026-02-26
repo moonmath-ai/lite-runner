@@ -287,6 +287,7 @@ class Runner:
             print(f"[dry-run] Tags: {self.tags}")
             print(f"[dry-run] Config: {config}")
             run_name = runner_flags.run_name or "run"
+            run_url = "<link to W&B run>"
         else:
             wb_run = wandb.init(
                 project=project,
@@ -297,6 +298,7 @@ class Runner:
                 config=config,
             )
             run_name = wb_run.name or wb_run.id or "run"
+            run_url = wb_run.url
 
         # Output dir
         output_dir = (
@@ -306,6 +308,7 @@ class Runner:
         if not runner_flags.dry_run:
             wb_run.config.update({"meta/output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"W&B run: {run_url}")
 
         # Save code snapshot (git archive + dirty diff)
         if runner_flags.dry_run:
@@ -324,12 +327,7 @@ class Runner:
             print("[dry-run] Logging input files")  # TODO: list files
         else:
             self._log_files(wb_run, interpolated_params, when="before")
-
-        if runner_flags.dry_run:
-            print("W&B run: <link to W&B run>")
-        else:
-            print(f"W&B run: {wb_run.url}")
-
+        
         # Build command
         cmd = self._build_command(interpolated_params)
         print(f"Command:\n  {shlex.join(cmd)}")
