@@ -244,19 +244,21 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        self._cli_params, self._cli_flags = self._parse_cli_args()
+        self.target_params, self.runner_flags = self._parse_cli_args()
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
-        flags = self._cli_flags
-        resolved_values = self._resolve_values(self._cli_params, overrides or {})
+        runner_flags = self.runner_flags
+        resolved_values = self._resolve_values(self.target_params, overrides or {})
 
         # Prompt for missing params (interactive mode)
-        self._prompt_missing(resolved_values, interactive=flags.interactive)
+        self._prompt_missing(resolved_values, interactive=runner_flags.interactive)
 
         # Git info and project
         git_info = _collect_git_info()
-        project = flags.wandb_project or self.wandb_project or git_info.get("repo")
+        project = (
+            runner_flags.wandb_project or self.wandb_project or git_info.get("repo")
+        )
         if project is None:
             msg = (
                 "Cannot determine project name:"
@@ -270,10 +272,10 @@ class Runner:
             run_tags.append("dirty-git")
 
         # Dry-run: show command without W&B or output dir
-        if flags.dry_run:
+        if runner_flags.dry_run:
             cmd = self._build_command(resolved_values)
             print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Run name: {flags.run_name or '(auto)'}")
+            print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
             print(f"[dry-run] Tags: {run_tags}")
             print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
             return
@@ -289,7 +291,7 @@ class Runner:
         config["meta/command"] = shlex.join(self.command)
         wb_run = wandb.init(
             project=project,
-            name=flags.run_name,
+            name=runner_flags.run_name,
             group=self.group,
             tags=run_tags,
             save_code=True,
@@ -404,16 +406,16 @@ class Runner:
                 parser.add_argument(p.flag, **p._argparse_kwargs())
 
         ns = parser.parse_args()
-        params = {
+        target_params = {
             p.dest: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
         }
-        flags = _RunFlags(
+        runner_flags = _RunFlags(
             dry_run=ns.dry_run,
             interactive=not ns.no_interactive,
             run_name=ns.run_name,
             wandb_project=ns.wandb_project,
         )
-        return params, flags
+        return target_params, runner_flags
 
     # -----------------------------------------------------------------------
     # Resolve values: apply overrides and callable defaults
