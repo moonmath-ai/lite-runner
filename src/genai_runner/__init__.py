@@ -281,8 +281,9 @@ class Runner:
             config[f"param/{k}"] = v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
+        timestamp = datetime.datetime.now(tz=datetime.UTC)
         config["meta/hostname"] = os.uname().nodename
-        config["meta/datetime"] = datetime.datetime.now(tz=datetime.UTC).isoformat()
+        config["meta/datetime"] = timestamp.isoformat()
         config["meta/command"] = shlex.join(self.command) 
         wb_run = wandb.init(
             project=project,
@@ -294,9 +295,8 @@ class Runner:
         )
 
         # Output dir
-        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M")
         dir_name = wb_run.name or wb_run.id or "run"
-        output_dir = _RUNS_DIR / project / f"{timestamp}_{dir_name}"
+        output_dir = _RUNS_DIR / project / f"{timestamp.strftime("%Y%m%d_%H%M")}_{dir_name}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
