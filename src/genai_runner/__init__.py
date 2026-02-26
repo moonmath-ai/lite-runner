@@ -206,7 +206,7 @@ class Metric:
     Args:
         name: Metric name in W&B summary.
         pattern: Regex with one capture group.
-        type: "float" or "str".  Determines how the captured value is stored.
+        type: "float", "int", or "str".  Determines how the captured value is stored.
     """
 
     name: str
@@ -730,6 +730,11 @@ class Runner:
             if m.type == "float":
                 try:
                     wb_run.summary[m.name] = float(raw)
+                except ValueError:
+                    wb_run.summary[m.name] = raw
+            elif m.type == "int":
+                try:
+                    wb_run.summary[m.name] = int(raw)
                 except ValueError:
                     wb_run.summary[m.name] = raw
             else:
