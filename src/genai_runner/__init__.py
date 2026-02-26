@@ -174,6 +174,7 @@ class Output:
 
     path: str
     log_as: str = "artifact"
+    name: str | None = None
     copy_to: str | None = None
 
 
@@ -758,7 +759,7 @@ def _log_single_output(wb_run: _WBRun, path: Path, o: Output, out: str) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dst)
         path = dst
-    _upload_file(wb_run, path, o.log_as)
+    _upload_file(wb_run, path, o.log_as, label=o.name)
 
 
 def _zip_and_upload(
