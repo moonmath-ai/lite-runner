@@ -266,17 +266,12 @@ class Runner:
             )
             raise ValueError(msg)
 
-        # Tags
-        run_tags = list(self.tags)
-        if git_info.get("dirty"):
-            run_tags.append("dirty-git")
-
         # Dry-run: show command without W&B or output dir
         if runner_flags.dry_run:
             cmd = self._build_command(resolved_params)
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
-            print(f"[dry-run] Tags: {run_tags}")
+            print(f"[dry-run] Tags: {self.tags}")
             print(f"[dry-run] Command:\n  {shlex.join(cmd)}")
             return
 
@@ -293,7 +288,7 @@ class Runner:
             project=project,
             name=runner_flags.run_name,
             group=self.group,
-            tags=run_tags,
+            tags=self.tags,
             save_code=True,
             config=config,
         )
@@ -333,7 +328,7 @@ class Runner:
             exit_code,
             duration,
             stdout_text,
-            run_tags,
+            self.tags,
         )
 
     def _post_run(
