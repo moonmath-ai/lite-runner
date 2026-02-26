@@ -111,31 +111,28 @@ class Param:
         self._dest = self.name.replace("-", "_")
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
-        if self._primary_type == "bool" and self.default not in (None, False):
+        for t in self.type_list:
+            if t != "bool" and t not in _PARAM_TYPE_MAP:
+                msg = f"Unknown param type '{t}' for param '{self.name}'"
+                raise ValueError(msg)
+        if self.type == "bool" and self.default not in (None, False):
             print(
                 f"[genai_runner] Warning: Param('{self.name}', type='bool')"
                 f" has default={self.default!r} which is ignored"
                 " (bool params always default to False)",
                 file=sys.stderr,
             )
-        if self.log_when is None:
-            log_as = _log_as_from_type(self._primary_type)
-            if log_as is not None:
-                self.log_when = "after" if self._value_contains_output() else "before"
+        if self.log_when is None and any(_log_as_from_type(t) for t in self.type_list):
+            self.log_when = "after" if self._value_contains_output() else "before"
 
     def _value_contains_output(self) -> bool:
         """Check whether $output appears anywhere in self.value."""
         return self.value is not None and _contains_output(self.value)
 
     @property
-    def _primary_type(self) -> str:
-        """The type string for single-value params, or first type for multi-value."""
-        return self.type[0] if isinstance(self.type, list) else self.type
-
-    @property
-    def types(self) -> list[str] | None:
-        """Per-element types for multi-value params, or None for single-value."""
-        return list[str](self.type) if isinstance(self.type, list) else None
+    def type_list(self) -> list[str]:
+        """Types as a list -- single-value wrapped, multi-value as-is."""
+        return list(self.type) if isinstance(self.type, list) else [self.type]
 
     @property
     def dest(self) -> str:
@@ -157,12 +154,9 @@ class Param:
     def _argparse_kwargs(self) -> dict:
         """Build kwargs for argparse.add_argument."""
         kwargs: dict = {"dest": self.dest, "default": None, "help": self.help or None}
-        if self._primary_type == "bool":
+        if self.type == "bool":
             kwargs["action"] = "store_true"
             kwargs["default"] = False
-        elif self._primary_type not in _PARAM_TYPE_MAP:
-            msg = f"Unknown param type '{self._primary_type}' for param '{self.name}'"
-            raise ValueError(msg)
         elif self.nargs is not None:
             kwargs["nargs"] = self.nargs
             kwargs["type"] = str
@@ -172,7 +166,7 @@ class Param:
                     f"{self.help or ''} ({' '.join(self.labels)})"
                 ).strip()
         else:
-            kwargs["type"] = _PARAM_TYPE_MAP[self._primary_type]
+            kwargs["type"] = _PARAM_TYPE_MAP[self.type]
         if self.choices:
             kwargs["choices"] = self.choices
         return kwargs
@@ -435,8 +429,10 @@ class Runner:
                     p.default() if callable(p.default) else p.default
                 )
             # Cast multi-value args to per-element types
-            if p.types and resolved_params.get(p.dest) is not None:
-                resolved_params[p.dest] = _cast_nargs(resolved_params[p.dest], p.types)
+            if p.nargs is not None and resolved_params.get(p.dest) is not None:
+                resolved_params[p.dest] = _cast_nargs(
+                    resolved_params[p.dest], p.type_list
+                )
         return resolved_params
 
     # -----------------------------------------------------------------------
@@ -447,9 +443,7 @@ class Runner:
         missing = [
             p
             for p in self.params
-            if not p.is_fixed
-            and p._primary_type != "bool"
-            and resolved.get(p.dest) is None
+            if not p.is_fixed and p.type != "bool" and resolved.get(p.dest) is None
         ]
 
         if not missing:
@@ -478,7 +472,7 @@ class Runner:
         label = p.help or p.name
         if p.choices:
             answer = questionary.select(f"{label}:", choices=p.choices).ask()
-        elif p._primary_type.startswith("path"):
+        elif isinstance(p.type, str) and p.type.startswith("path"):
             answer = questionary.path(f"{label}:").ask()
         else:
             answer = questionary.text(f"{label}:").ask()
@@ -487,13 +481,13 @@ class Runner:
             print("Cancelled.", file=sys.stderr)
             sys.exit(1)
 
-        caster = _PARAM_TYPE_MAP.get(p._primary_type, str)
+        caster = _PARAM_TYPE_MAP.get(p.type, str)
         return caster(answer)
 
     def _prompt_nargs(self, p: Param) -> list:
         assert p.nargs is not None
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
-        element_types = p.types or [p._primary_type] * p.nargs
+        element_types = p.type_list
         parts = []
         for label, etype in zip(labels, element_types, strict=True):
             if etype.startswith("path"):
@@ -536,10 +530,10 @@ class Runner:
         cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.dest)
-            if val is None or (p._primary_type == "bool" and not val):
+            if val is None or (p.type == "bool" and not val):
                 continue
             assert p.flag is not None
-            if p._primary_type == "bool":
+            if p.type == "bool":
                 cmd.append(p.flag)
             elif isinstance(val, list):
                 cmd.append(p.flag)
@@ -634,20 +628,21 @@ class Runner:
 
     def _log_files(self, wb_run: _WBRun, param_values: dict, when: str) -> None:
         for p in self.params:
-            log_as = _log_as_from_type(p._primary_type)
-            if log_as is None or p.log_when != when:
+            if p.log_when != when:
                 continue
-            path_val = param_values.get(p.dest)
-            if path_val is None:
+            val = param_values.get(p.dest)
+            if val is None:
                 continue
-            # For multi-value, the first element is the path
-            if isinstance(path_val, list):
-                path_val = path_val[0]
-            path = Path(path_val)
-            if not path.exists():
-                print(f"[genai_runner] Warning: {path} not found, skipping upload")
-                continue
-            _upload_file(wb_run, path, log_as, label=p.name)
+            values = val if isinstance(val, list) else [val]
+            for v, t in zip(values, p.type_list, strict=True):
+                log_as = _log_as_from_type(t)
+                if log_as is None:
+                    continue
+                path = Path(str(v))
+                if not path.exists():
+                    print(f"[genai_runner] Warning: {path} not found, skipping upload")
+                    continue
+                _upload_file(wb_run, path, log_as, label=p.name)
 
     def _log_extra_outputs(self, wb_run: _WBRun, output_dir: Path) -> None:
         out = str(output_dir)
@@ -723,7 +718,10 @@ class Runner:
     def _count_logged(self, media_type: str) -> int:
         """Count params and outputs that log as the given media type."""
         return sum(
-            1 for p in self.params if _log_as_from_type(p._primary_type) == media_type
+            1
+            for p in self.params
+            for t in p.type_list
+            if _log_as_from_type(t) == media_type
         ) + sum(1 for o in self.outputs if o.log_as == media_type)
 
 

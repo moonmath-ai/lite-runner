@@ -205,7 +205,7 @@ def test_param_type_list_infers_nargs():
         labels=["path", "start", "strength"],
     )
     assert p.nargs == 3
-    assert p.types == ["path-image", "float", "float"]
+    assert p.type_list == ["path-image", "float", "float"]
     assert p.labels == ["path", "start", "strength"]
 
 
@@ -213,21 +213,28 @@ def test_param_nargs_none_without_type_list():
     assert Param("prompt").nargs is None
 
 
-def test_param_primary_type_single():
-    assert Param("seed", type="int")._primary_type == "int"
+def test_param_type_list_single():
+    assert Param("seed", type="int").type_list == ["int"]
 
 
-def test_param_primary_type_list():
-    p = Param("img", type=["path-image", "float", "float"])
-    assert p._primary_type == "path-image"
+def test_param_type_list_multi():
+    assert Param("img", type=["path", "float"]).type_list == ["path", "float"]
 
 
-def test_param_types_property_single():
-    assert Param("seed", type="int").types is None
+def test_param_log_when_multi_value_non_first_path():
+    """path-video in non-first position still infers log_when."""
+    p = Param("combo", type=["float", "path-video", "float"])
+    assert p.log_when == "before"
 
 
-def test_param_types_property_list():
-    assert Param("img", type=["path", "float"]).types == ["path", "float"]
+def test_param_log_when_multi_value_non_first_path_output():
+    """path-video in non-first position with $output infers log_when='after'."""
+    p = Param(
+        "combo",
+        type=["float", "path-video", "float"],
+        value=["0.5", "$output/vid.mp4", "1.0"],
+    )
+    assert p.log_when == "after"
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +316,12 @@ def test_wandb_project_override():
 
 def test_unknown_param_type_raises():
     with pytest.raises(ValueError, match="Unknown param type 'banana'"):
-        Runner(command="echo", params=[Param("x", type="banana")])
+        Param("x", type="banana")
+
+
+def test_unknown_param_type_in_list_raises():
+    with pytest.raises(ValueError, match="Unknown param type 'banana'"):
+        Param("x", type=["str", "banana"])
 
 
 # ---------------------------------------------------------------------------
