@@ -324,6 +324,11 @@ def test_unknown_param_type_in_list_raises():
         Param("x", type=["str", "banana"])
 
 
+def test_bool_in_type_list_raises():
+    with pytest.raises(ValueError, match="'bool' cannot appear in a multi-value type"):
+        Param("x", type=["bool", "str"])
+
+
 # ---------------------------------------------------------------------------
 # Resolve values
 # ---------------------------------------------------------------------------

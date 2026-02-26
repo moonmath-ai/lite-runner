@@ -112,6 +112,12 @@ class Param:
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
         for t in self.type_list:
+            if t == "bool" and isinstance(self.type, list):
+                msg = (
+                    "'bool' cannot appear in a multi-value"
+                    f" type list for param '{self.name}'"
+                )
+                raise ValueError(msg)
             if t != "bool" and t not in _PARAM_TYPE_MAP:
                 msg = f"Unknown param type '{t}' for param '{self.name}'"
                 raise ValueError(msg)
