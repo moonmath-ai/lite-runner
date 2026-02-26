@@ -308,11 +308,9 @@ class Runner:
         output_dir = (
             _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
         )
-        print(f"Output dir: {output_dir}")
         if not runner_flags.dry_run:
             wb_run.config.update({"meta/output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"W&B run: {run_url}")
 
         # Save code snapshot (git archive + dirty diff)
         if runner_flags.dry_run:
@@ -334,6 +332,8 @@ class Runner:
 
         # Build command
         cmd = self._build_command(interpolated_params)
+        print(f"Output dir: {output_dir}")
+        print(f"W&B run: {run_url}")
         print(f"Command:\n  {shlex.join(cmd)}")
 
         # Execute
