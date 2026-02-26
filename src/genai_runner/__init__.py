@@ -154,6 +154,29 @@ class Param:
     def needs_prompt(self) -> bool:
         return not self.is_fixed and self.default is None
 
+    def _argparse_kwargs(self) -> dict:
+        """Build kwargs for argparse.add_argument."""
+        kwargs: dict = {"dest": self.dest, "default": None, "help": self.help or None}
+        if self._primary_type == "bool":
+            kwargs["action"] = "store_true"
+            kwargs["default"] = False
+        elif self._primary_type not in _PARAM_TYPE_MAP:
+            msg = f"Unknown param type '{self._primary_type}' for param '{self.name}'"
+            raise ValueError(msg)
+        elif self.nargs is not None:
+            kwargs["nargs"] = self.nargs
+            kwargs["type"] = str
+            if self.labels:
+                kwargs["metavar"] = tuple(self.labels)
+                kwargs["help"] = (
+                    f"{self.help or ''} ({' '.join(self.labels)})"
+                ).strip()
+        else:
+            kwargs["type"] = _PARAM_TYPE_MAP[self._primary_type]
+        if self.choices:
+            kwargs["choices"] = self.choices
+        return kwargs
+
 
 @dataclass
 class Output:
@@ -377,32 +400,8 @@ class Runner:
         )
 
         for p in self.params:
-            if p.is_fixed:
-                continue
-            kwargs: dict = {
-                "default": None,
-                "help": p.help or None,
-            }
-            if p._primary_type == "bool":
-                kwargs["action"] = "store_true"
-                kwargs["default"] = False
-            else:
-                if p._primary_type not in _PARAM_TYPE_MAP:
-                    msg = f"Unknown param type '{p._primary_type}' for param '{p.name}'"
-                    raise ValueError(msg)
-                kwargs["type"] = _PARAM_TYPE_MAP[p._primary_type]
-                if p.nargs is not None:
-                    # Multi-value: argparse gets nargs=N, all as str
-                    kwargs["nargs"] = p.nargs
-                    kwargs["type"] = str
-                    if p.labels:
-                        kwargs["metavar"] = tuple(p.labels)
-                        kwargs["help"] = (
-                            f"{p.help or ''} ({' '.join(p.labels)})"
-                        ).strip()
-            if p.choices:
-                kwargs["choices"] = p.choices
-            parser.add_argument(p.flag, dest=p.dest, **kwargs)
+            if not p.is_fixed:
+                parser.add_argument(p.flag, **p._argparse_kwargs())
 
         ns = parser.parse_args()
         params = {
