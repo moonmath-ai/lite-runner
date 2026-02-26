@@ -308,14 +308,14 @@ class Runner:
         output_dir = (
             _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
         )
+        print(f"Output dir: {output_dir}")
+        print(f"W&B run: {run_url}")
         if not runner_flags.dry_run:
             wb_run.config.update({"meta/output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
-        if runner_flags.dry_run:
-            print("[dry-run] Saving code snapshot")
-        else:
+        if not runner_flags.dry_run:
             try:
                 _log_code_snapshot(wb_run, output_dir, git_info)
             except Exception as e:  # noqa: BLE001
@@ -325,21 +325,17 @@ class Runner:
         interpolated_params = self._interpolate_output(resolved_params, output_dir)
 
         # Log input files (log_when == "before")
-        if runner_flags.dry_run:
-            print("[dry-run] Logging input files")  # TODO: list files
-        else:
+        if not runner_flags.dry_run:
             self._log_files(wb_run, interpolated_params, when="before")
 
         # Build command
         cmd = self._build_command(interpolated_params)
-        print(f"Output dir: {output_dir}")
-        print(f"W&B run: {run_url}")
         print(f"Command:\n  {shlex.join(cmd)}")
 
-        # Execute
         if runner_flags.dry_run:
             return
 
+        # Execute
         print("=" * 60)
         exit_code, duration, stdout_text, aborted = self._execute(cmd, output_dir)
         print("=" * 60)
