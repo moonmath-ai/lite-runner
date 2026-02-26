@@ -550,11 +550,11 @@ class Runner:
         cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.dest)
-            if val is None or (p.type == "bool" and not val):
-                continue
+            assert val is not None
             assert p.flag is not None
             if p.type == "bool":
-                cmd.append(p.flag)
+                if val:
+                    cmd.append(p.flag)
             elif isinstance(val, list):
                 cmd.append(p.flag)
                 cmd.extend(str(v) for v in val)

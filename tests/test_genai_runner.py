@@ -547,17 +547,6 @@ def test_build_multi_value_flag():
     ]
 
 
-def test_build_none_values_omitted():
-    runner = Runner(
-        command="run.py", params=[Param("prompt"), Param("seed", type="int")]
-    )
-    assert runner._build_command({"prompt": "hi", "seed": None}) == [
-        "run.py",
-        "--prompt",
-        "hi",
-    ]
-
-
 def test_build_custom_flag():
     runner = Runner(command="run.py", params=[Param("out", flag="-o")])
     assert runner._build_command({"out": "/tmp/x"}) == ["run.py", "-o", "/tmp/x"]
