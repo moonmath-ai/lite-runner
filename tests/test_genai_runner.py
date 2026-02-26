@@ -406,19 +406,21 @@ def test_resolve_fixed_override():
 def test_no_interactive_exits_on_missing():
     runner = Runner(command="echo", params=[Param("prompt")])
     with pytest.raises(SystemExit, match="2"):
-        runner._prompt_missing({"prompt": None}, interactive=False)
+        runner._prompt_params({"prompt": None}, {"prompt": None}, {}, interactive=False)
 
 
 def test_no_missing_params_is_noop():
     runner = Runner(command="echo", params=[Param("seed", default=42)])
-    runner._prompt_missing({"seed": 42}, interactive=False)
+    runner._prompt_params({"seed": 42}, {"seed": None}, {}, interactive=False)
 
 
 def test_interactive_fills_from_questionary():
     runner = Runner(command="echo", params=[Param("prompt")])
     with patch("genai_runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
-        resolved = runner._prompt_missing({"prompt": None}, interactive=True)
+        resolved = runner._prompt_params(
+            {"prompt": None}, {"prompt": None}, {}, interactive=True
+        )
     assert resolved["prompt"] == "a cat"
 
 
@@ -426,7 +428,9 @@ def test_interactive_select_for_choices():
     runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
     with patch("genai_runner.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
-        resolved = runner._prompt_missing({"mode": None}, interactive=True)
+        resolved = runner._prompt_params(
+            {"mode": None}, {"mode": None}, {}, interactive=True
+        )
     assert resolved["mode"] == "fast"
 
 
@@ -445,7 +449,9 @@ def test_interactive_type_list_prompts_each_part():
     with patch("genai_runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
-        resolved = runner._prompt_missing({"image": None}, interactive=True)
+        resolved = runner._prompt_params(
+            {"image": None}, {"image": None}, {}, interactive=True
+        )
     # After prompting, types are cast: str, float, float
     assert resolved["image"] == ["photo.jpg", 0.0, 0.8]
 
@@ -455,7 +461,9 @@ def test_interactive_path_image_uses_path_widget():
     runner = Runner(command="echo", params=[Param("img", type="path-image")])
     with patch("genai_runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
-        resolved = runner._prompt_missing({"img": None}, interactive=True)
+        resolved = runner._prompt_params(
+            {"img": None}, {"img": None}, {}, interactive=True
+        )
     mock_q.path.assert_called_once()
     assert resolved["img"] == "/tmp/photo.jpg"
 
@@ -465,7 +473,43 @@ def test_interactive_cancel_exits():
     with patch("genai_runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = None
         with pytest.raises(SystemExit, match="1"):
-            runner._prompt_missing({"prompt": None}, interactive=True)
+            runner._prompt_params(
+                {"prompt": None}, {"prompt": None}, {}, interactive=True
+            )
+
+
+def test_interactive_prompts_default_param():
+    """Params with defaults are prompted with default pre-filled."""
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.text.return_value.ask.return_value = "99"
+        resolved = runner._prompt_params(
+            {"seed": 42}, {"seed": None}, {}, interactive=True
+        )
+    mock_q.text.assert_called_once_with("seed:", default="42")
+    assert resolved["seed"] == 99
+
+
+def test_interactive_skips_cli_provided_param():
+    """Params explicitly provided on CLI are not prompted."""
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    with patch("genai_runner.questionary") as mock_q:
+        resolved = runner._prompt_params(
+            {"seed": 99}, {"seed": 99}, {}, interactive=True
+        )
+    mock_q.text.assert_not_called()
+    assert resolved["seed"] == 99
+
+
+def test_interactive_skips_overridden_param():
+    """Params set via overrides are not prompted."""
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    with patch("genai_runner.questionary") as mock_q:
+        resolved = runner._prompt_params(
+            {"seed": 77}, {"seed": None}, {"seed": 77}, interactive=True
+        )
+    mock_q.text.assert_not_called()
+    assert resolved["seed"] == 77
 
 
 # ---------------------------------------------------------------------------

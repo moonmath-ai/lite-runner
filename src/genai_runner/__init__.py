@@ -252,8 +252,11 @@ class Runner:
 
         # Resolve params and prompt for missing ones
         resolved_params = self._resolve_params(self.parsed_params, overrides or {})
-        resolved_params = self._prompt_missing(
-            resolved_params, interactive=runner_flags.interactive
+        resolved_params = self._prompt_params(
+            resolved_params,
+            self.parsed_params,
+            overrides or {},
+            interactive=runner_flags.interactive,
         )
 
         # Git info and project
@@ -327,7 +330,7 @@ class Runner:
             print("[dry-run] Logging input files")  # TODO: list files
         else:
             self._log_files(wb_run, interpolated_params, when="before")
-        
+
         # Build command
         cmd = self._build_command(interpolated_params)
         print(f"Command:\n  {shlex.join(cmd)}")
@@ -467,48 +470,65 @@ class Runner:
     # Interactive prompts
     # -----------------------------------------------------------------------
 
-    def _prompt_missing(self, resolved_params: dict, *, interactive: bool) -> dict:
+    def _prompt_params(
+        self,
+        resolved_params: dict,
+        parsed_params: dict,
+        overrides: dict,
+        *,
+        interactive: bool,
+    ) -> dict:
         resolved_params = dict(resolved_params)
-        missing = [
+
+        # Params eligible for prompting: non-fixed, non-bool,
+        # not explicitly set via CLI or overrides
+        promptable = [
             p
             for p in self.params
             if not p.is_fixed
             and p.type != "bool"
-            and resolved_params.get(p.dest) is None
+            and p.dest not in overrides
+            and parsed_params.get(p.dest) is None
         ]
 
-        if not missing:
-            return resolved_params
+        missing = [p for p in promptable if resolved_params.get(p.dest) is None]
 
         if not interactive:
-            names = [p.name for p in missing]
-            print(
-                f"Error: missing required params: {', '.join(names)}",
-                file=sys.stderr,
-            )
-            print(
-                "Run without -n for interactive mode,"
-                " or pass them on the command line.",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            if missing:
+                names = [p.name for p in missing]
+                print(
+                    f"Error: missing required params: {', '.join(names)}",
+                    file=sys.stderr,
+                )
+                print(
+                    "Run without -n for interactive mode,"
+                    " or pass them on the command line.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            return resolved_params
 
-        for p in missing:
+        for p in promptable:
+            default = resolved_params.get(p.dest)
             if p.nargs is not None:
-                resolved_params[p.dest] = self._prompt_nargs(p)
+                resolved_params[p.dest] = self._prompt_nargs(p, default=default)
             else:
-                resolved_params[p.dest] = self._prompt_single(p)
+                resolved_params[p.dest] = self._prompt_single(p, default=default)
 
         return resolved_params
 
-    def _prompt_single(self, p: Param) -> int | float | str:
+    def _prompt_single(self, p: Param, default: object = None) -> int | float | str:
         label = p.help or p.name
+        default_str = str(default) if default is not None else ""
         if p.choices:
-            answer = questionary.select(f"{label}:", choices=p.choices).ask()
+            default_choice = str(default) if default is not None else None
+            answer = questionary.select(
+                f"{label}:", choices=p.choices, default=default_choice
+            ).ask()
         elif isinstance(p.type, str) and p.type.startswith("path"):
-            answer = questionary.path(f"{label}:").ask()
+            answer = questionary.path(f"{label}:", default=default_str).ask()
         else:
-            answer = questionary.text(f"{label}:").ask()
+            answer = questionary.text(f"{label}:", default=default_str).ask()
 
         if answer is None:
             print("Cancelled.", file=sys.stderr)
@@ -517,16 +537,22 @@ class Runner:
         caster = _PARAM_TYPE_MAP.get(p.type, str)
         return caster(answer)
 
-    def _prompt_nargs(self, p: Param) -> list:
+    def _prompt_nargs(self, p: Param, default: object = None) -> list:
         assert p.nargs is not None
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
         element_types = p.type_list
+        defaults = default if isinstance(default, list) else [None] * p.nargs
         parts = []
-        for label, etype in zip(labels, element_types, strict=True):
+        for label, etype, d in zip(labels, element_types, defaults, strict=True):
+            default_str = str(d) if d is not None else ""
             if etype.startswith("path"):
-                answer = questionary.path(f"{p.name} {label}:").ask()
+                answer = questionary.path(
+                    f"{p.name} {label}:", default=default_str
+                ).ask()
             else:
-                answer = questionary.text(f"{p.name} {label}:").ask()
+                answer = questionary.text(
+                    f"{p.name} {label}:", default=default_str
+                ).ask()
             if answer is None:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
