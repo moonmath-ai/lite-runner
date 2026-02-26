@@ -249,10 +249,10 @@ class Runner:
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
-        resolved_values = self._resolve_params(self.parsed_params, overrides or {})
+        resolved_params = self._resolve_params(self.parsed_params, overrides or {})
 
         # Prompt for missing params (interactive mode)
-        self._prompt_missing(resolved_values, interactive=runner_flags.interactive)
+        self._prompt_missing(resolved_params, interactive=runner_flags.interactive)
 
         # Git info and project
         git_info = _collect_git_info()
@@ -273,7 +273,7 @@ class Runner:
 
         # Dry-run: show command without W&B or output dir
         if runner_flags.dry_run:
-            cmd = self._build_command(resolved_values)
+            cmd = self._build_command(resolved_params)
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
             print(f"[dry-run] Tags: {run_tags}")
@@ -282,7 +282,7 @@ class Runner:
 
         # W&B init
         config: dict[str, object] = {
-            f"param/{k}": v for k, v in resolved_values.items()
+            f"param/{k}": v for k, v in resolved_params.items()
         }
         for k, v in git_info.items():
             config[f"git/{k}"] = v
@@ -308,7 +308,7 @@ class Runner:
         _save_code_snapshot(wb_run, output_dir, git_info)
 
         # Interpolate $output in param values
-        param_values = self._interpolate_output(resolved_values, output_dir)
+        param_values = self._interpolate_output(resolved_params, output_dir)
 
         # Log input files (log_when == "before")
         self._log_files(wb_run, param_values, when="before")
