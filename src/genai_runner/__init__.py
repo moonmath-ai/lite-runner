@@ -64,6 +64,20 @@ def _contains_output(val: object) -> bool:
     return "$output" in str(val)
 
 
+# Sentinel for params the user explicitly skipped (typed '-' at the prompt).
+_SKIP_INPUT = "-"
+
+
+class _Unset:
+    """Param value skipped by user during interactive prompting."""
+
+    def __repr__(self) -> str:
+        return "<unset>"
+
+
+_UNSET = _Unset()
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -282,7 +296,7 @@ class Runner:
         # Config
         config: dict[str, object] = {}
         for k, v in resolved_params.items():
-            config[f"param/{k}"] = v
+            config[f"param/{k}"] = "<unset>" if v is _UNSET else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
         timestamp = datetime.datetime.now(tz=datetime.UTC)
@@ -522,13 +536,16 @@ class Runner:
 
         return resolved_params
 
-    def _prompt_single(self, p: Param, default: object = None) -> int | float | str:
+    def _prompt_single(
+        self, p: Param, default: object = None
+    ) -> int | float | str | _Unset:
         label = p.help or p.name
         default_str = str(default) if default is not None else ""
         if p.choices:
+            choices = [_SKIP_INPUT, *p.choices]
             default_choice = str(default) if default is not None else None
             answer = questionary.select(
-                f"{label}:", choices=p.choices, default=default_choice
+                f"{label}:", choices=choices, default=default_choice
             ).ask()
         elif isinstance(p.type, str) and p.type.startswith("path"):
             answer = questionary.path(f"{label}:", default=default_str).ask()
@@ -539,10 +556,13 @@ class Runner:
             print("Cancelled.", file=sys.stderr)
             sys.exit(1)
 
+        if answer == _SKIP_INPUT:
+            return _UNSET
+
         caster = _PARAM_TYPE_MAP.get(p.type, str)
         return caster(answer)
 
-    def _prompt_nargs(self, p: Param, default: object = None) -> list:
+    def _prompt_nargs(self, p: Param, default: object = None) -> list | _Unset:
         assert p.nargs is not None
         labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
         element_types = p.type_list
@@ -561,6 +581,8 @@ class Runner:
             if answer is None:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
+            if answer == _SKIP_INPUT:
+                return _UNSET
             parts.append(answer)
         return _cast_nargs(parts, element_types)
 
@@ -574,7 +596,7 @@ class Runner:
         out = str(output_dir)
         for p in self.params:
             val = result.get(p.dest)
-            if val is None:
+            if val is None or val is _UNSET:
                 continue
             if isinstance(val, list):
                 interpolated = [str(v).replace("$output", out) for v in val]
@@ -592,6 +614,8 @@ class Runner:
         cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.dest)
+            if val is _UNSET:
+                continue
             assert val is not None
             assert p.flag is not None
             if p.type == "bool":
@@ -697,7 +721,7 @@ class Runner:
             if p.log_when != when:
                 continue
             val = param_values.get(p.dest)
-            if val is None:
+            if val is None or val is _UNSET:
                 continue
             values = val if isinstance(val, list) else [val]
             for v, t in zip(values, p.type_list, strict=True):

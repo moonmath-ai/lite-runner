@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from genai_runner import (
+    _UNSET,
     Metric,
     Output,
     Param,
@@ -552,6 +553,110 @@ def test_hidden_param_accepts_cli_flag():
             [Param("threshold", type="float", default=-3.0, hidden=True)]
         )
     assert runner.parsed_params["threshold"] == -5.0
+
+
+# ---------------------------------------------------------------------------
+# Skip param (type '-' to omit from command)
+# ---------------------------------------------------------------------------
+
+
+def test_skip_single_param_returns_unset():
+    """Typing '-' at a text prompt returns _UNSET."""
+    runner = Runner(command="echo", params=[Param("prompt")])
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.text.return_value.ask.return_value = "-"
+        resolved = runner._prompt_params(
+            {"prompt": None}, {"prompt": None}, {}, interactive=True
+        )
+    assert resolved["prompt"] is _UNSET
+
+
+def test_skip_select_param_returns_unset():
+    """Selecting '-' in a choices prompt returns _UNSET."""
+    runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.select.return_value.ask.return_value = "-"
+        resolved = runner._prompt_params(
+            {"mode": None}, {"mode": None}, {}, interactive=True
+        )
+    assert resolved["mode"] is _UNSET
+
+
+def test_skip_select_includes_dash_in_choices():
+    """Select prompt should prepend '-' to the choices list."""
+    runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.select.return_value.ask.return_value = "fast"
+        runner._prompt_params({"mode": None}, {"mode": None}, {}, interactive=True)
+    call_args = mock_q.select.call_args
+    assert call_args[1]["choices"] == ["-", "fast", "slow"]
+
+
+def test_skip_nargs_returns_unset():
+    """Typing '-' for any nargs element skips the whole param."""
+    runner = Runner(
+        command="echo",
+        params=[
+            Param(
+                "image",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+            ),
+        ],
+    )
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = "-"
+        resolved = runner._prompt_params(
+            {"image": None}, {"image": None}, {}, interactive=True
+        )
+    assert resolved["image"] is _UNSET
+
+
+def test_build_command_skips_unset():
+    """_UNSET params are omitted from the command."""
+    runner = Runner(
+        command="run.py",
+        params=[Param("prompt"), Param("mode", choices=["fast", "slow"])],
+    )
+    cmd = runner._build_command({"prompt": "a cat", "mode": _UNSET})
+    assert cmd == ["run.py", "--prompt", "a cat"]
+
+
+def test_config_logs_unset_as_marker():
+    """Skipped params appear as '<unset>' in the config dict."""
+    with patch(
+        "sys.argv", ["prog", "--dry-run", "--no-interactive", "--prompt", "test"]
+    ):
+        runner = Runner(
+            command="echo",
+            params=[Param("prompt"), Param("mode", default="fast")],
+        )
+    # Simulate a resolved dict with one skipped param
+    resolved = {"prompt": "test", "mode": _UNSET}
+    config: dict[str, object] = {}
+    for k, v in resolved.items():
+        config[f"param/{k}"] = "<unset>" if v is _UNSET else v
+    assert config["param/prompt"] == "test"
+    assert config["param/mode"] == "<unset>"
+
+
+def test_interpolate_preserves_unset(tmp_path):
+    """_UNSET values pass through interpolation unchanged."""
+    runner = Runner(command="echo", params=[Param("out", value="$output/x.mp4")])
+    result = runner._interpolate_output({"out": _UNSET}, tmp_path)
+    assert result["out"] is _UNSET
+
+
+def test_log_files_skips_unset():
+    """_log_files skips params whose value is _UNSET."""
+    runner = Runner(
+        command="echo",
+        params=[Param("img", type="path-image")],
+    )
+    wb_run = _mock_wb_run()
+    # Should not raise or try to upload
+    runner._log_files(wb_run, {"img": _UNSET}, when="before")
+    wb_run.log.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
