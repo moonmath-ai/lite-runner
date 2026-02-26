@@ -1,10 +1,4 @@
-# /// script
-# requires-python = ">=3.11"
-# ///
-#
-# In a real project, your run_config.py would have:
-#   dependencies = ["genai-runner @ git+https://github.com/YOU/genai-runner"]
-# For these examples, run with: uv run --project .. examples/run_example.py
+# Run with: uv run python examples/run_example.py
 """Example run config for the fake model."""
 
 from genai_runner import Metric, Output, Param, Runner

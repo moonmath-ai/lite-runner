@@ -1,7 +1,4 @@
-# /// script
-# requires-python = ">=3.11"
-# ///
-# Run with: uv run --project .. examples/run_sweep.py
+# Run with: uv run python examples/run_sweep.py
 """Example sweep: same model, varying threshold and mode."""
 
 from genai_runner import Metric, Param, Runner
