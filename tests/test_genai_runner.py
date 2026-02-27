@@ -647,6 +647,20 @@ def test_interpolate_preserves_unset(tmp_path):
     assert result["out"] is UNSET
 
 
+def test_interpolate_preserves_bool(tmp_path):
+    """Bool values are not stringified by interpolation."""
+    runner = Runner(
+        command="echo",
+        params=[
+            Param("on", type="bool", value=True),
+            Param("off", type="bool", value=False),
+        ],
+    )
+    result = runner._interpolate_output({"on": True, "off": False}, tmp_path)
+    assert result["on"] is True
+    assert result["off"] is False
+
+
 def test_log_files_skips_unset():
     """_log_files skips params whose value is UNSET."""
     runner = Runner(

@@ -597,7 +597,7 @@ class Runner:
         out = str(output_dir)
         for p in self.params:
             val = result.get(p.name)
-            if val is None or val is UNSET:
+            if val is None or val is UNSET or p.type == "bool":
                 continue
             if isinstance(val, list):
                 interpolated = [str(v).replace("$output", out) for v in val]
