@@ -647,17 +647,20 @@ class Runner:
             prefix: str = "",
             capture: bool = False,
         ) -> None:
-            for raw_line in iter(pipe.readline, b""):
-                line = raw_line.decode("utf-8", errors="replace")
-                sys_stream.write(line)
+            while True:
+                chunk = pipe.read1(8192) if hasattr(pipe, "read1") else pipe.read(8192)
+                if not chunk:
+                    break
+                text = chunk.decode("utf-8", errors="replace")
+                sys_stream.write(text)
                 sys_stream.flush()
-                file_log.write(line)
+                file_log.write(text)
                 file_log.flush()
                 with lock:
-                    log_combined.write(prefix + line)
+                    log_combined.write(prefix + text if prefix else text)
                     log_combined.flush()
                     if capture:
-                        stdout_lines.append(line)
+                        stdout_lines.append(text)
             pipe.close()
 
         with ExitStack() as stack:
