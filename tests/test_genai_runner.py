@@ -1,5 +1,6 @@
 """Tests for genai_runner."""
 
+import re
 import subprocess
 import sys
 import zipfile
@@ -886,12 +887,13 @@ def test_dry_run_prints_command_no_wandb(capsys):
     with patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO):
         runner.run()
     captured = capsys.readouterr()
-    assert "[dry-run]" in captured.out
-    assert "--prompt test" in captured.out
-    assert "--seed 42" in captured.out
-    assert "$output/video.mp4" in captured.out
-    assert "Run name: (auto)" in captured.out
-    assert "Tags: ['v1']" in captured.out
+    out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
+    assert "[dry-run]" in out
+    assert "--prompt test" in out
+    assert "--seed 42" in out
+    assert "$output/video.mp4" in out
+    assert "Run name: (auto)" in out
+    assert "Tags: ['v1']" in out
 
 
 def test_no_project_raises_valueerror():

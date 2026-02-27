@@ -622,11 +622,12 @@ class Runner:
     ) -> str:
         """Build a colored command string for display."""
         _RST = "\033[0m"
+        _BOLD = "\033[1m"
         _COLORS = {
-            "flag": "\033[1m",  # bold white — prompted, required
-            "flag+default": "\033[32m",  # green — prompted, had default
-            "cli": "\033[36m",  # cyan — CLI arg, no default
-            "cli+default": "\033[34m",  # blue — CLI arg, overriding default
+            "flag": "\033[31m",  # red — prompted, required
+            "flag+default": "\033[32m",  # green — prompted, kept default
+            "cli": "\033[36m",  # cyan — from CLI, non-default value
+            "cli+default": "\033[34m",  # blue — from CLI, kept default
             "value": "\033[33m",  # yellow — fixed value=
             "hidden": "\033[35m",  # magenta — hidden, default used
         }
@@ -642,25 +643,36 @@ class Runner:
             if p.type == "bool":
                 if not val:
                     continue
-                tokens = p.flag
-            elif isinstance(val, list):
-                tokens = shlex.join([p.flag, *(str(v) for v in val)])
-            else:
-                tokens = shlex.join([p.flag, str(val)])
 
             if p.is_fixed:
                 kind = "value"
             elif p.hidden:
                 kind = "hidden"
-            elif p.name in overrides:
-                kind = "cli+default" if p.default is not None else "cli"
-            elif parsed_params.get(p.name) is not None:
-                kind = "cli+default" if p.default is not None else "cli"
+            elif p.name in overrides or parsed_params.get(p.name) is not None:
+                kind = "cli+default" if self._is_default_value(p, val) else "cli"
             else:
-                kind = "flag+default" if p.default is not None else "flag"
+                kind = "flag+default" if self._is_default_value(p, val) else "flag"
 
-            parts.append(f"{_COLORS[kind]}{tokens}{_RST}")
+            color = _COLORS[kind]
+            if p.type == "bool":
+                parts.append(f"{color}{p.flag}{_RST}")
+            elif isinstance(val, list):
+                val_str = " ".join(shlex.quote(str(v)) for v in val)
+                parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
+            else:
+                val_str = shlex.quote(str(val))
+                parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
         return " ".join(parts)
+
+    @staticmethod
+    def _is_default_value(p: Param, val: object) -> bool:
+        """Check whether val matches the param's default."""
+        if p.default is None:
+            return False
+        default = p.default() if callable(p.default) else p.default
+        if isinstance(val, list) and isinstance(default, list):
+            return [str(v) for v in val] == [str(d) for d in default]
+        return str(val) == str(default)
 
     def _build_command(self, param_values: dict) -> list[str]:
         cmd = list(self.command)
