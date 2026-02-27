@@ -75,7 +75,7 @@ class _Unset:
         return "<unset>"
 
 
-_UNSET = _Unset()
+UNSET = _Unset()
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class Runner:
         # Config
         config: dict[str, object] = {}
         for k, v in resolved_params.items():
-            config[f"param/{k}"] = "<unset>" if v is _UNSET else v
+            config[f"param/{k}"] = "<unset>" if v is UNSET else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
         timestamp = datetime.datetime.now(tz=datetime.UTC)
@@ -557,7 +557,7 @@ class Runner:
             sys.exit(1)
 
         if answer == _SKIP_INPUT:
-            return _UNSET
+            return UNSET
 
         caster = _PARAM_TYPE_MAP.get(p.type, str)
         return caster(answer)
@@ -582,7 +582,7 @@ class Runner:
                 print("Cancelled.", file=sys.stderr)
                 sys.exit(1)
             if answer == _SKIP_INPUT:
-                return _UNSET
+                return UNSET
             parts.append(answer)
         return _cast_nargs(parts, element_types)
 
@@ -596,7 +596,7 @@ class Runner:
         out = str(output_dir)
         for p in self.params:
             val = result.get(p.name)
-            if val is None or val is _UNSET:
+            if val is None or val is UNSET:
                 continue
             if isinstance(val, list):
                 interpolated = [str(v).replace("$output", out) for v in val]
@@ -614,7 +614,7 @@ class Runner:
         cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.name)
-            if val is _UNSET:
+            if val is UNSET:
                 continue
             assert val is not None
             assert p.flag is not None
@@ -721,7 +721,7 @@ class Runner:
             if p.log_when != when:
                 continue
             val = param_values.get(p.name)
-            if val is None or val is _UNSET:
+            if val is None or val is UNSET:
                 continue
             values = val if isinstance(val, list) else [val]
             for v, t in zip(values, p.type_list, strict=True):
