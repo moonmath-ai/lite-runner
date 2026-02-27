@@ -351,7 +351,10 @@ class Runner:
 
         # Build command
         cmd = self._build_command(interpolated_params)
-        print(f"Command:\n  {shlex.join(cmd)}")
+        colored_cmd = self._format_command(
+            interpolated_params, self.parsed_params, overrides or {}
+        )
+        print(f"Command:\n{colored_cmd}")
 
         if runner_flags.dry_run:
             return
@@ -610,6 +613,54 @@ class Runner:
     # -----------------------------------------------------------------------
     # Build command
     # -----------------------------------------------------------------------
+
+    def _format_command(
+        self,
+        param_values: dict,
+        parsed_params: dict,
+        overrides: dict,
+    ) -> str:
+        """Build a colored command string for display."""
+        _RST = "\033[0m"
+        _COLORS = {
+            "flag": "\033[1m",  # bold white — prompted, required
+            "flag+default": "\033[32m",  # green — prompted, had default
+            "cli": "\033[36m",  # cyan — CLI arg, no default
+            "cli+default": "\033[34m",  # blue — CLI arg, overriding default
+            "value": "\033[33m",  # yellow — fixed value=
+            "hidden": "\033[35m",  # magenta — hidden, default used
+        }
+
+        parts = [shlex.join(self.command)]
+        for p in self.params:
+            val = param_values.get(p.name)
+            if val is UNSET:
+                continue
+            assert val is not None
+            assert p.flag is not None
+
+            if p.type == "bool":
+                if not val:
+                    continue
+                tokens = p.flag
+            elif isinstance(val, list):
+                tokens = shlex.join([p.flag, *(str(v) for v in val)])
+            else:
+                tokens = shlex.join([p.flag, str(val)])
+
+            if p.is_fixed:
+                kind = "value"
+            elif p.hidden:
+                kind = "hidden"
+            elif p.name in overrides:
+                kind = "cli+default" if p.default is not None else "cli"
+            elif parsed_params.get(p.name) is not None:
+                kind = "cli+default" if p.default is not None else "cli"
+            else:
+                kind = "flag+default" if p.default is not None else "flag"
+
+            parts.append(f"{_COLORS[kind]}{tokens}{_RST}")
+        return " ".join(parts)
 
     def _build_command(self, param_values: dict) -> list[str]:
         cmd = list(self.command)
