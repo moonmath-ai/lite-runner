@@ -669,6 +669,11 @@ class Runner:
             log_stderr = stack.enter_context((output_dir / "stderr.log").open("w"))
 
             run_env = {**os.environ, **self.env}
+            if "COLUMNS" not in run_env:
+                try:
+                    run_env["COLUMNS"] = str(os.get_terminal_size().columns)
+                except OSError:
+                    pass
 
             proc = subprocess.Popen(  # noqa: S603
                 cmd,
