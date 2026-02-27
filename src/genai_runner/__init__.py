@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import os
 import pprint
 import re
@@ -240,6 +241,7 @@ class Metric:
 class _RunFlags:
     dry_run: bool = False
     interactive: bool = True
+    no_wandb: bool = False
     run_name: str | None = None
     wandb_project: str | None = None
 
@@ -304,6 +306,16 @@ class Runner:
         config["meta/datetime"] = timestamp.isoformat()
         config["meta/command"] = shlex.join(self.command)
 
+        # Local run info (accumulated regardless of W&B mode)
+        run_info: dict[str, Any] = {
+            "config": dict(config),
+            "tags": list(self.tags),
+            "group": self.group,
+            "metrics": {},
+            "summary": {},
+            "files_logged": [],
+        }
+
         # W&B init
         if runner_flags.dry_run:
             print(f"[dry-run] Project: {project}")
@@ -313,6 +325,10 @@ class Runner:
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             run_name = runner_flags.run_name or "run"
             run_url = "<link to W&B run>"
+        elif runner_flags.no_wandb:
+            wb_run = None
+            run_name = runner_flags.run_name or "local"
+            run_url = "(W&B disabled)"
         else:
             wb_run = wandb.init(
                 project=project,
@@ -332,13 +348,15 @@ class Runner:
         print(f"Output dir: {output_dir}")
         print(f"W&B run: {run_url}")
         if not runner_flags.dry_run:
-            wb_run.config.update({"meta/output_dir": str(output_dir)})
+            run_info["config"]["meta/output_dir"] = str(output_dir)
+            if wb_run is not None:
+                wb_run.config.update({"meta/output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save code snapshot (git archive + dirty diff)
         if not runner_flags.dry_run:
             try:
-                _log_code_snapshot(wb_run, output_dir, git_info)
+                _log_code_snapshot(wb_run, output_dir, git_info, run_info)
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
@@ -347,7 +365,9 @@ class Runner:
 
         # Log input files (log_when == "before")
         if not runner_flags.dry_run:
-            self._log_files(wb_run, interpolated_params, when="before")
+            self._log_files(
+                wb_run, interpolated_params, when="before", run_info=run_info
+            )
 
         # Build command
         cmd = self._build_command(interpolated_params)
@@ -373,18 +393,20 @@ class Runner:
             duration,
             stdout_text,
             self.tags,
+            run_info=run_info,
             aborted=aborted,
         )
 
     def _post_run(
         self,
-        wb_run: _WBRun,
+        wb_run: _WBRun | None,
         param_values: dict,
         output_dir: Path,
         exit_code: int,
         duration: float,
         stdout_text: str,
         run_tags: list[str],
+        run_info: dict,
         *,
         aborted: bool = False,
     ) -> None:
@@ -400,23 +422,53 @@ class Runner:
             "status": status,
             "output_dir": str(output_dir),
         }
+        run_info["summary"] = summary
 
-        for step_name, step in [
-            ("extract metrics", lambda: self._extract_metrics(wb_run, stdout_text)),
+        steps: list[tuple[str, object]] = [
+            (
+                "extract metrics",
+                lambda: self._extract_metrics(wb_run, stdout_text, run_info),
+            ),
             (
                 "log output files",
-                lambda: self._log_files(wb_run, param_values, when="after"),
+                lambda: self._log_files(
+                    wb_run, param_values, when="after", run_info=run_info
+                ),
             ),
-            ("log extra outputs", lambda: self._log_extra_outputs(wb_run, output_dir)),
-            ("log run logs", lambda: self._log_run_logs(wb_run, output_dir)),
-            ("tag run status", lambda: _tag_status(wb_run, status, run_tags)),
-            ("update W&B summary", lambda: wb_run.summary.update(summary)),
-            ("finish W&B run", lambda: wb_run.finish(exit_code=exit_code)),
-        ]:
+            (
+                "log extra outputs",
+                lambda: self._log_extra_outputs(wb_run, output_dir, run_info),
+            ),
+            (
+                "log run logs",
+                lambda: self._log_run_logs(wb_run, output_dir, run_info),
+            ),
+            (
+                "tag run status",
+                lambda: _tag_status(wb_run, status, run_tags, run_info),
+            ),
+        ]
+        if wb_run is not None:
+            steps.extend(
+                [
+                    ("update W&B summary", lambda: wb_run.summary.update(summary)),
+                    ("finish W&B run", lambda: wb_run.finish(exit_code=exit_code)),
+                ]
+            )
+
+        for step_name, step in steps:
             try:
                 step()
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
+
+        # Always write run_info.json
+        try:
+            (output_dir / "run_info.json").write_text(
+                json.dumps(run_info, indent=2, default=str)
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[genai_runner] Warning: writing run_info.json failed: {e}")
 
         print(f"Status: {status} (exit code {exit_code})")
         print(f"Duration: {duration:.1f}s")
@@ -446,6 +498,11 @@ class Runner:
             default=None,
             help="Override W&B project name",
         )
+        parser.add_argument(
+            "--no-wandb",
+            action="store_true",
+            help="Skip W&B logging; still execute command and save outputs locally",
+        )
 
         for p in self.params:
             if not p.is_fixed:
@@ -458,6 +515,7 @@ class Runner:
         runner_flags = _RunFlags(
             dry_run=ns.dry_run,
             interactive=not ns.no_interactive,
+            no_wandb=ns.no_wandb,
             run_name=ns.run_name,
             wandb_project=ns.wandb_project,
         )
@@ -788,7 +846,9 @@ class Runner:
     # File logging to W&B
     # -----------------------------------------------------------------------
 
-    def _log_files(self, wb_run: _WBRun, param_values: dict, when: str) -> None:
+    def _log_files(
+        self, wb_run: _WBRun | None, param_values: dict, when: str, run_info: dict
+    ) -> None:
         for p in self.params:
             if p.log_when != when:
                 continue
@@ -804,9 +864,11 @@ class Runner:
                 if not path.exists():
                     msg = f"File not found: {path} (param '{p.name}')"
                     raise FileNotFoundError(msg)
-                _upload_file(wb_run, path, log_as, label=p.name)
+                _upload_file(wb_run, path, log_as, label=p.name, run_info=run_info)
 
-    def _log_extra_outputs(self, wb_run: _WBRun, output_dir: Path) -> None:
+    def _log_extra_outputs(
+        self, wb_run: _WBRun | None, output_dir: Path, run_info: dict
+    ) -> None:
         out = str(output_dir)
         seen_zips: set[str] = set()
         for o in self.outputs:
@@ -827,7 +889,7 @@ class Runner:
                 base = path
                 matches = sorted(path.rglob("*"))
             else:
-                _log_single_output(wb_run, path, o, out)
+                _log_single_output(wb_run, path, o, out, run_info)
                 continue
 
             # Glob or directory: upload matches
@@ -847,29 +909,39 @@ class Runner:
                     )
                     raise ValueError(msg)
                 seen_zips.add(label)
-                _zip_and_upload(wb_run, matches, base, output_dir, label)
+                _zip_and_upload(wb_run, matches, base, output_dir, label, run_info)
             else:
                 for m in matches:
                     if m.is_file():
-                        _upload_file(wb_run, m, o.log_as, label=label)
+                        _upload_file(
+                            wb_run, m, o.log_as, label=label, run_info=run_info
+                        )
 
-    def _log_run_logs(self, wb_run: _WBRun, output_dir: Path) -> None:
+    def _log_run_logs(
+        self, wb_run: _WBRun | None, output_dir: Path, run_info: dict
+    ) -> None:
         existing_logs = [
             output_dir / name
             for name in ("run.log", "stdout.log", "stderr.log")
             if (output_dir / name).exists()
         ]
         if existing_logs:
-            artifact = wandb.Artifact(f"logs-{wb_run.id}", type="log")
-            for f in existing_logs:
-                artifact.add_file(str(f))
-            wb_run.log_artifact(artifact)
+            run_info["files_logged"].append(
+                {"type": "log", "files": [str(f) for f in existing_logs]}
+            )
+            if wb_run is not None:
+                artifact = wandb.Artifact(f"logs-{wb_run.id}", type="log")
+                for f in existing_logs:
+                    artifact.add_file(str(f))
+                wb_run.log_artifact(artifact)
 
     # -----------------------------------------------------------------------
     # Metric extraction
     # -----------------------------------------------------------------------
 
-    def _extract_metrics(self, wb_run: _WBRun, stdout_text: str) -> None:
+    def _extract_metrics(
+        self, wb_run: _WBRun | None, stdout_text: str, run_info: dict
+    ) -> None:
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
             if not matches:
@@ -877,16 +949,19 @@ class Runner:
             raw = matches[-1]  # last match wins
             if m.type == "float":
                 try:
-                    wb_run.summary[m.name] = float(raw)
+                    val = float(raw)
                 except ValueError:
-                    wb_run.summary[m.name] = raw
+                    val = raw
             elif m.type == "int":
                 try:
-                    wb_run.summary[m.name] = int(raw)
+                    val = int(raw)
                 except ValueError:
-                    wb_run.summary[m.name] = raw
+                    val = raw
             else:
-                wb_run.summary[m.name] = raw
+                val = raw
+            run_info["metrics"][m.name] = val
+            if wb_run is not None:
+                wb_run.summary[m.name] = val
 
 
 # ---------------------------------------------------------------------------
@@ -914,7 +989,9 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
     return Path(path_str).parent, Path(path_str).name
 
 
-def _log_single_output(wb_run: _WBRun, path: Path, o: Output, out: str) -> None:
+def _log_single_output(
+    wb_run: _WBRun | None, path: Path, o: Output, out: str, run_info: dict
+) -> None:
     """Handle a single (non-glob, non-directory) output file."""
     if not path.exists():
         msg = f"Output file not found: {path}"
@@ -924,15 +1001,16 @@ def _log_single_output(wb_run: _WBRun, path: Path, o: Output, out: str) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dst)
         path = dst
-    _upload_file(wb_run, path, o.log_as, label=o.name)
+    _upload_file(wb_run, path, o.log_as, label=o.name, run_info=run_info)
 
 
 def _zip_and_upload(
-    wb_run: _WBRun,
+    wb_run: _WBRun | None,
     matches: list[Path],
     base: Path,
     output_dir: Path,
     label: str,
+    run_info: dict,
 ) -> None:
     """Zip matched files and upload as artifact."""
     zip_path = output_dir / f"{label}.zip"
@@ -940,16 +1018,23 @@ def _zip_and_upload(
         for m in matches:
             if m.is_file():
                 zf.write(m, m.relative_to(base))
-    _upload_file(wb_run, zip_path, "artifact", label=label)
+    _upload_file(wb_run, zip_path, "artifact", label=label, run_info=run_info)
 
 
 def _upload_file(
-    wb_run: _WBRun,
+    wb_run: _WBRun | None,
     path: Path,
     log_as: str,
     label: str | None = None,
+    run_info: dict | None = None,
 ) -> None:
     key = label or path.stem
+    if run_info is not None:
+        run_info["files_logged"].append(
+            {"path": str(path), "log_as": log_as, "key": key}
+        )
+    if wb_run is None:
+        return
     if log_as == "video":
         wb_run.log({key: wandb.Video(str(path))})
     elif log_as == "image":
@@ -963,10 +1048,14 @@ def _upload_file(
         wb_run.log_artifact(artifact)
 
 
-def _tag_status(wb_run: _WBRun, status: str, run_tags: list[str]) -> None:
-    """Add 'failed' or 'aborted' tag to W&B run when not successful."""
+def _tag_status(
+    wb_run: _WBRun | None, status: str, run_tags: list[str], run_info: dict
+) -> None:
+    """Add 'failed' or 'aborted' tag when not successful."""
     if status != "success":
-        wb_run.tags = [*run_tags, status]
+        run_info["tags"] = [*run_tags, status]
+        if wb_run is not None:
+            wb_run.tags = [*run_tags, status]
 
 
 def _collect_git_info() -> dict:
@@ -991,7 +1080,9 @@ def _collect_git_info() -> dict:
         return {}
 
 
-def _log_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None:
+def _log_code_snapshot(
+    wb_run: _WBRun | None, output_dir: Path, git_info: dict, run_info: dict
+) -> None:
     """Save a full code snapshot: git archive + dirty diff."""
     if not git_info:
         return
@@ -1022,9 +1113,16 @@ def _log_code_snapshot(wb_run: _WBRun, output_dir: Path, git_info: dict) -> None
             diff_path = code_dir / "dirty.patch"
             diff_path.write_bytes(diff_result.stdout)
 
-    # Upload as W&B artifact
-    artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
-    artifact.add_file(str(archive_path))
+    # Record in run_info
+    files = [str(archive_path)]
     if diff_path and diff_path.exists():
-        artifact.add_file(str(diff_path))
-    wb_run.log_artifact(artifact)
+        files.append(str(diff_path))
+    run_info["files_logged"].append({"type": "code", "files": files})
+
+    # Upload as W&B artifact
+    if wb_run is not None:
+        artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
+        artifact.add_file(str(archive_path))
+        if diff_path and diff_path.exists():
+            artifact.add_file(str(diff_path))
+        wb_run.log_artifact(artifact)

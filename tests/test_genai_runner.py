@@ -1,5 +1,6 @@
 """Tests for genai_runner."""
 
+import json
 import re
 import subprocess
 import sys
@@ -58,6 +59,17 @@ def _make_runner(params=None, **kwargs):
     return Runner(
         command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
     )
+
+
+def _empty_run_info():
+    return {
+        "config": {},
+        "tags": [],
+        "group": None,
+        "metrics": {},
+        "summary": {},
+        "files_logged": [],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -669,8 +681,9 @@ def test_log_files_skips_unset():
         params=[Param("img", type="path-image")],
     )
     wb_run = _mock_wb_run()
+    ri = _empty_run_info()
     # Should not raise or try to upload
-    runner._log_files(wb_run, {"img": UNSET}, when="before")
+    runner._log_files(wb_run, {"img": UNSET}, when="before", run_info=ri)
     wb_run.log.assert_not_called()
 
 
@@ -797,8 +810,10 @@ def test_metric_float():
         command="echo", metrics=[Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
     )
     wb_run = _mock_wb_run()
-    runner._extract_metrics(wb_run, "some output\nskipped=32.8%\ndone")
+    ri = _empty_run_info()
+    runner._extract_metrics(wb_run, "some output\nskipped=32.8%\ndone", ri)
     assert wb_run.summary["skip_pct"] == 32.8
+    assert ri["metrics"]["skip_pct"] == 32.8
 
 
 def test_metric_str():
@@ -806,22 +821,28 @@ def test_metric_str():
         command="echo", metrics=[Metric("status", pattern=r"final: (\w+)", type="str")]
     )
     wb_run = _mock_wb_run()
-    runner._extract_metrics(wb_run, "final: completed")
+    ri = _empty_run_info()
+    runner._extract_metrics(wb_run, "final: completed", ri)
     assert wb_run.summary["status"] == "completed"
+    assert ri["metrics"]["status"] == "completed"
 
 
 def test_metric_last_match_wins():
     runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
     wb_run = _mock_wb_run()
-    runner._extract_metrics(wb_run, "x=1.0\nx=2.0\nx=3.0")
+    ri = _empty_run_info()
+    runner._extract_metrics(wb_run, "x=1.0\nx=2.0\nx=3.0", ri)
     assert wb_run.summary["val"] == 3.0
+    assert ri["metrics"]["val"] == 3.0
 
 
 def test_metric_no_match():
     runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
     wb_run = _mock_wb_run()
-    runner._extract_metrics(wb_run, "no matches here")
+    ri = _empty_run_info()
+    runner._extract_metrics(wb_run, "no matches here", ri)
     assert "val" not in wb_run.summary
+    assert "val" not in ri["metrics"]
 
 
 # ---------------------------------------------------------------------------
@@ -991,8 +1012,9 @@ def test_log_extra_outputs_glob(tmp_path):
         outputs=[Output("$output/frames/*.png", log_as="image")],
     )
     wb_run = _mock_wb_run()
+    ri = _empty_run_info()
     with patch("genai_runner.wandb"):
-        runner._log_extra_outputs(wb_run, tmp_path)
+        runner._log_extra_outputs(wb_run, tmp_path, ri)
     # Should upload 2 png files, not the txt
     assert wb_run.log.call_count == 2
 
@@ -1008,8 +1030,9 @@ def test_log_extra_outputs_glob_zip(tmp_path):
         outputs=[Output("$output/debug/*.pt", log_as="zip")],
     )
     wb_run = _mock_wb_run()
+    ri = _empty_run_info()
     with patch("genai_runner.wandb"):
-        runner._log_extra_outputs(wb_run, tmp_path)
+        runner._log_extra_outputs(wb_run, tmp_path, ri)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -1030,7 +1053,8 @@ def test_log_extra_outputs_dir_zip(tmp_path):
         outputs=[Output("$output/debug", log_as="zip")],
     )
     wb_run = _mock_wb_run()
-    runner._log_extra_outputs(wb_run, tmp_path)
+    ri = _empty_run_info()
+    runner._log_extra_outputs(wb_run, tmp_path, ri)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -1047,7 +1071,8 @@ def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
         outputs=[Output("$output/nope/*.png", log_as="image")],
     )
     wb_run = _mock_wb_run()
-    runner._log_extra_outputs(wb_run, tmp_path)
+    ri = _empty_run_info()
+    runner._log_extra_outputs(wb_run, tmp_path, ri)
     assert "matched no files" in capsys.readouterr().out
 
 
@@ -1060,7 +1085,8 @@ def test_log_extra_outputs_single_file(tmp_path):
         outputs=[Output("$output/meta.json", log_as="artifact")],
     )
     wb_run = _mock_wb_run()
-    runner._log_extra_outputs(wb_run, tmp_path)
+    ri = _empty_run_info()
+    runner._log_extra_outputs(wb_run, tmp_path, ri)
     wb_run.log_artifact.assert_called_once()
 
 
@@ -1078,8 +1104,9 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
         ],
     )
     wb_run = _mock_wb_run()
+    ri = _empty_run_info()
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        runner._log_extra_outputs(wb_run, tmp_path)
+        runner._log_extra_outputs(wb_run, tmp_path, ri)
 
 
 # ---------------------------------------------------------------------------
@@ -1120,3 +1147,148 @@ def test_git_info_empty_outside_repo():
         "subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "git")
     ):
         assert _collect_git_info() == {}
+
+
+# ---------------------------------------------------------------------------
+# --no-wandb flag
+# ---------------------------------------------------------------------------
+
+
+def test_no_wandb_flag_parsed():
+    with patch("sys.argv", ["prog", "--no-wandb"]):
+        runner = _make_runner()
+    assert runner.runner_flags.no_wandb is True
+
+
+def test_no_wandb_flag_default():
+    runner = _make_runner()
+    assert runner.runner_flags.no_wandb is False
+
+
+def test_full_run_no_wandb(tmp_path):
+    """--no-wandb skips W&B but still runs command and writes run_info.json."""
+    with patch("sys.argv", ["prog", "--no-wandb", "--no-interactive"]):
+        runner = Runner(
+            command=(
+                f"{sys.executable} -c \"import sys; print('hello'); print('x=42.0')\""
+            ),
+            params=[],
+            metrics=[Metric("val", pattern=r"x=([\d.]+)")],
+            tags=["v1"],
+            group="test-group",
+        )
+
+    mock_wb = MagicMock()
+
+    with (
+        patch("genai_runner.wandb", mock_wb),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._log_code_snapshot"),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+    ):
+        runner.run()
+
+    # W&B should NOT have been initialized
+    mock_wb.init.assert_not_called()
+
+    # Find the output dir
+    project_dir = tmp_path / "genai_runs" / "test-repo"
+    assert project_dir.exists()
+    run_dirs = list(project_dir.iterdir())
+    assert len(run_dirs) == 1
+    output_dir = run_dirs[0]
+    assert "local" in output_dir.name
+
+    # run_info.json should exist
+    run_info_path = output_dir / "run_info.json"
+    assert run_info_path.exists()
+    run_info = json.loads(run_info_path.read_text())
+
+    # Check config
+    assert run_info["config"]["git/repo"] == "test-repo"
+    assert run_info["config"]["meta/output_dir"] == str(output_dir)
+
+    # Check metrics extracted
+    assert run_info["metrics"]["val"] == 42.0
+
+    # Check summary
+    assert run_info["summary"]["status"] == "success"
+    assert run_info["summary"]["exit_code"] == 0
+    assert run_info["summary"]["duration_seconds"] > 0
+
+    # Check tags and group
+    assert "v1" in run_info["tags"]
+    assert run_info["group"] == "test-group"
+
+    # Logs should exist
+    assert (output_dir / "stdout.log").exists()
+    assert (output_dir / "run.log").exists()
+
+
+def test_full_run_with_wandb_also_writes_run_info(tmp_path):
+    """Even with W&B enabled, run_info.json is written."""
+    mock_wb = MagicMock()
+    wb_run = _mock_wb_run()
+    mock_wb.init.return_value = wb_run
+    mock_wb.Artifact = MagicMock()
+
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(
+            command=f"{sys.executable} -c \"print('ok')\"",
+            params=[],
+        )
+
+    with (
+        patch("genai_runner.wandb", mock_wb),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._log_code_snapshot"),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+    ):
+        runner.run()
+
+    # W&B should have been called
+    mock_wb.init.assert_called_once()
+
+    # run_info.json should also exist
+    project_dir = tmp_path / "genai_runs" / "test-repo"
+    run_dirs = list(project_dir.iterdir())
+    assert len(run_dirs) == 1
+    run_info_path = run_dirs[0] / "run_info.json"
+    assert run_info_path.exists()
+    run_info = json.loads(run_info_path.read_text())
+    assert run_info["summary"]["status"] == "success"
+
+
+def test_no_wandb_failed_run(tmp_path):
+    """--no-wandb with a failing command records failure status and tags."""
+    with patch("sys.argv", ["prog", "--no-wandb", "--no-interactive"]):
+        runner = Runner(
+            command=f'{sys.executable} -c "import sys; sys.exit(1)"',
+            params=[],
+            tags=["v1"],
+        )
+
+    with (
+        patch("genai_runner.wandb", MagicMock()),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._log_code_snapshot"),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+    ):
+        runner.run()
+
+    project_dir = tmp_path / "genai_runs" / "test-repo"
+    run_dirs = list(project_dir.iterdir())
+    output_dir = run_dirs[0]
+    run_info = json.loads((output_dir / "run_info.json").read_text())
+
+    assert run_info["summary"]["status"] == "failed"
+    assert run_info["summary"]["exit_code"] == 1
+    assert "failed" in run_info["tags"]
+
+
+def test_extract_metrics_without_wandb():
+    """Metrics are extracted into run_info even when wb_run is None."""
+    runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
+    ri = _empty_run_info()
+    runner._extract_metrics(None, "x=3.14", ri)
+    assert ri["metrics"]["val"] == 3.14
