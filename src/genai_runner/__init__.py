@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime
 import json
 import os
@@ -269,19 +270,87 @@ class Runner:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
         self.parsed_params, self.runner_flags = self._parse_cli_args()
+        self._resolved_params: dict | None = None
+        self._overrides: dict | None = None
+
+    def override(
+        self, overrides: dict[str, object] | None = None, **kwargs: object
+    ) -> Runner:
+        """Return a copy of this Runner with param overrides pre-resolved.
+
+        Resolves and validates all params eagerly so errors surface
+        here rather than at run() time.  Accepts a dict and/or keyword
+        arguments (underscores in kwarg names are mapped to hyphens).
+
+        Example::
+
+            r1 = runner.override(seed=42, prompt="a cat")
+            r2 = runner.override(seed=99, prompt="a dog")
+            # both validated ^^
+            r1.run()
+            r2.run()
+        """
+        merged: dict[str, object] = {}
+        # Carry forward overrides from a previous override() call
+        if self._overrides is not None:
+            merged.update(self._overrides)
+        merged.update(overrides or {})
+        # kwargs use underscores; map to param names via dest lookup
+        name_by_dest = {p.dest: p.name for p in self.params}
+        for k, v in kwargs.items():
+            merged[name_by_dest.get(k, k)] = v
+
+        # Validate override keys
+        valid_names = {p.name for p in self.params}
+        unknown = set(merged) - valid_names
+        if unknown:
+            msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
+            raise ValueError(msg)
+
+        # Resolve: overrides > CLI > defaults
+        resolved = self._resolve_params(self.parsed_params, merged)
+
+        # Check for missing required params
+        missing = [
+            p.name
+            for p in self.params
+            if not p.is_fixed
+            and p.type != "bool"
+            and resolved.get(p.name) is None
+        ]
+        if missing:
+            msg = f"Missing required param(s): {', '.join(missing)}"
+            raise ValueError(msg)
+
+        new = copy.copy(self)
+        new._resolved_params = resolved
+        new._overrides = merged
+        return new
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
 
-        # Resolve params and prompt for missing ones
-        resolved_params = self._resolve_params(self.parsed_params, overrides or {})
-        resolved_params = self._prompt_params(
-            resolved_params,
-            self.parsed_params,
-            overrides or {},
-            interactive=runner_flags.interactive,
-        )
+        if self._resolved_params is not None:
+            if overrides is not None:
+                msg = (
+                    "Cannot pass overrides to run() on an"
+                    " already-overridden Runner; call override() again"
+                )
+                raise ValueError(msg)
+            resolved_params = self._resolved_params
+            overrides_dict = self._overrides or {}
+        else:
+            overrides_dict = overrides or {}
+            resolved_params = self._resolve_params(
+                self.parsed_params, overrides_dict
+            )
+            resolved_params = self._prompt_params(
+                resolved_params,
+                self.parsed_params,
+                overrides_dict,
+                interactive=runner_flags.interactive,
+            )
 
         # Git info and project
         git_info = _collect_git_info()
@@ -372,7 +441,7 @@ class Runner:
         # Build command
         cmd = self._build_command(interpolated_params)
         colored_cmd = self._format_command(
-            interpolated_params, self.parsed_params, overrides or {}
+            interpolated_params, self.parsed_params, overrides_dict
         )
         print(f"Command:\n{colored_cmd}")
 

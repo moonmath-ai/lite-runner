@@ -413,6 +413,146 @@ def test_resolve_fixed_callable():
     assert resolved["out"] == "/computed"
 
 
+# ---------------------------------------------------------------------------
+# override()
+# ---------------------------------------------------------------------------
+
+
+def test_override_returns_new_runner():
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    r2 = runner.override(seed=99)
+    assert r2 is not runner
+    assert r2._resolved_params["seed"] == 99
+    # Original unchanged
+    assert runner._resolved_params is None
+
+
+def test_override_uses_defaults_for_unset():
+    runner = Runner(
+        command="echo",
+        params=[Param("seed", type="int", default=42), Param("mode", default="fast")],
+    )
+    r2 = runner.override(seed=99)
+    assert r2._resolved_params["seed"] == 99
+    assert r2._resolved_params["mode"] == "fast"
+
+
+def test_override_with_dict():
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    r2 = runner.override({"seed": 99})
+    assert r2._resolved_params["seed"] == 99
+
+
+def test_override_kwarg_underscore_to_hyphen():
+    """Kwarg underscores are mapped to param names via dest lookup."""
+    runner = Runner(
+        command="echo",
+        params=[Param("output-path", default="/tmp")],
+    )
+    r2 = runner.override(output_path="/new")
+    assert r2._resolved_params["output-path"] == "/new"
+
+
+def test_override_unknown_param_raises():
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    with pytest.raises(ValueError, match="Unknown param"):
+        runner.override(nope=1)
+
+
+def test_override_missing_required_raises():
+    runner = Runner(
+        command="echo",
+        params=[Param("prompt"), Param("seed", type="int", default=42)],
+    )
+    with pytest.raises(ValueError, match="Missing required param"):
+        runner.override(seed=99)
+
+
+def test_override_provides_required():
+    runner = Runner(
+        command="echo",
+        params=[Param("prompt"), Param("seed", type="int", default=42)],
+    )
+    r2 = runner.override(prompt="a cat")
+    assert r2._resolved_params["prompt"] == "a cat"
+    assert r2._resolved_params["seed"] == 42
+
+
+def test_override_preserves_cli_args():
+    """CLI args are still used as base; overrides take priority."""
+    with patch("sys.argv", ["prog", "--seed", "10"]):
+        runner = Runner(
+            command="echo", params=[Param("seed", type="int", default=42)]
+        )
+    # CLI gave seed=10, override doesn't touch it
+    r2 = runner.override()
+    assert r2._resolved_params["seed"] == 10
+    # Override takes priority over CLI
+    r3 = runner.override(seed=99)
+    assert r3._resolved_params["seed"] == 99
+
+
+def test_override_fixed_params_included():
+    """Fixed params (value=) are resolved even without overrides."""
+    runner = Runner(
+        command="echo",
+        params=[Param("out", value="$output/video.mp4")],
+    )
+    r2 = runner.override()
+    assert r2._resolved_params["out"] == "$output/video.mp4"
+
+
+def test_override_run_rejects_double_overrides():
+    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
+    r2 = runner.override(seed=99)
+    with pytest.raises(ValueError, match="already-overridden"):
+        r2.run(overrides={"seed": 1})
+
+
+def test_override_chained():
+    """Calling override() on an already-overridden runner works."""
+    runner = Runner(
+        command="echo",
+        params=[Param("seed", type="int", default=42), Param("mode", default="fast")],
+    )
+    r2 = runner.override(seed=99)
+    r3 = r2.override(mode="slow")
+    assert r3._resolved_params["seed"] == 99
+    assert r3._resolved_params["mode"] == "slow"
+
+
+def test_override_run_skips_prompting(tmp_path):
+    """run() on an overridden Runner does not prompt."""
+    mock_wb = MagicMock()
+    wb_run = _mock_wb_run()
+    mock_wb.init.return_value = wb_run
+    mock_wb.Artifact = MagicMock()
+
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(
+            command=f"{sys.executable} -c \"print('ok')\"",
+            params=[Param("seed", type="int", default=42)],
+        )
+    r2 = runner.override(seed=99)
+    with (
+        patch("genai_runner.wandb", mock_wb),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._log_code_snapshot"),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.questionary") as mock_q,
+    ):
+        r2.run()
+    # Questionary should never be called
+    mock_q.text.assert_not_called()
+    mock_q.select.assert_not_called()
+    # Config should reflect the override
+    config = mock_wb.init.call_args[1]["config"]
+    assert config["param/seed"] == 99
+
+
+# ---------------------------------------------------------------------------
+
+
 def test_resolve_fixed_override():
     runner = Runner(
         command="echo",
