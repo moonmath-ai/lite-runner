@@ -478,7 +478,8 @@ class Runner:
                     p.default() if callable(p.default) else p.default
                 )
             # Cast multi-value args to per-element types
-            if p.nargs is not None and resolved_params.get(p.name) is not None:
+            val = resolved_params.get(p.name)
+            if p.nargs is not None and val is not None and val is not UNSET:
                 resolved_params[p.name] = _cast_nargs(
                     resolved_params[p.name], p.type_list
                 )
@@ -672,6 +673,7 @@ class Runner:
                 stderr=subprocess.PIPE,
                 env=run_env,
             )
+            start = time.monotonic()
 
             t_out = threading.Thread(
                 target=stream_pipe,
@@ -685,7 +687,6 @@ class Runner:
             )
 
             aborted = False
-            start = time.monotonic()
             t_out.start()
             t_err.start()
 
