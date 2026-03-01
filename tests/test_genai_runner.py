@@ -517,10 +517,10 @@ def test_override_run_skips_prompting(tmp_path):
     r2 = runner.override(seed=99)
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
-        patch("genai_runner.questionary") as mock_q,
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.questionary") as mock_q,
     ):
         r2.run()
     # Questionary should never be called
@@ -571,7 +571,7 @@ def test_resolve_carries_forward_overrides():
 def test_fill_prompts_missing():
     runner = _make_runner(params=[Param("prompt")])
     r2 = runner.resolve()
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r3 = r2.fill()
     assert r3._filled
@@ -635,7 +635,7 @@ def test_no_missing_params_is_noop():
 
 def test_interactive_fills_from_questionary():
     runner = Runner(command="echo", params=[Param("prompt")])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         resolved = runner._prompt_params(
             {"prompt": None}, {"prompt": None}, {}, interactive=True
@@ -645,7 +645,7 @@ def test_interactive_fills_from_questionary():
 
 def test_interactive_select_for_choices():
     runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         resolved = runner._prompt_params(
             {"mode": None}, {"mode": None}, {}, interactive=True
@@ -665,7 +665,7 @@ def test_interactive_type_list_prompts_each_part():
         ],
     )
     answers = iter(["0", "0.8"])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
         resolved = runner._prompt_params(
@@ -678,7 +678,7 @@ def test_interactive_type_list_prompts_each_part():
 def test_interactive_path_image_uses_path_widget():
     """path-image type should use questionary.path() widget."""
     runner = Runner(command="echo", params=[Param("img", type="path-image")])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
         resolved = runner._prompt_params(
             {"img": None}, {"img": None}, {}, interactive=True
@@ -689,7 +689,7 @@ def test_interactive_path_image_uses_path_widget():
 
 def test_interactive_cancel_exits():
     runner = Runner(command="echo", params=[Param("prompt")])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = None
         with pytest.raises(SystemExit, match="1"):
             runner._prompt_params(
@@ -700,7 +700,7 @@ def test_interactive_cancel_exits():
 def test_interactive_prompts_default_param():
     """Params with defaults are prompted with default pre-filled."""
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "99"
         resolved = runner._prompt_params(
             {"seed": 42}, {"seed": None}, {}, interactive=True
@@ -712,7 +712,7 @@ def test_interactive_prompts_default_param():
 def test_interactive_skips_cli_provided_param():
     """Params explicitly provided on CLI are not prompted."""
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         resolved = runner._prompt_params(
             {"seed": 99}, {"seed": 99}, {}, interactive=True
         )
@@ -723,7 +723,7 @@ def test_interactive_skips_cli_provided_param():
 def test_interactive_skips_overridden_param():
     """Params set via overrides are not prompted."""
     runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         resolved = runner._prompt_params(
             {"seed": 77}, {"seed": None}, {"seed": 77}, interactive=True
         )
@@ -740,7 +740,7 @@ def test_interactive_skips_hidden_param():
             Param("threshold", type="float", default=-3.0, hidden=True),
         ],
     )
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         resolved = runner._prompt_params(
             {"prompt": None, "threshold": -3.0},
@@ -771,7 +771,7 @@ def test_hidden_param_accepts_cli_flag():
 def test_skip_single_param_returns_unset():
     """Typing '-' at a text prompt returns UNSET."""
     runner = Runner(command="echo", params=[Param("prompt")])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "-"
         resolved = runner._prompt_params(
             {"prompt": None}, {"prompt": None}, {}, interactive=True
@@ -782,7 +782,7 @@ def test_skip_single_param_returns_unset():
 def test_skip_select_param_returns_unset():
     """Selecting '-' in a choices prompt returns UNSET."""
     runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "-"
         resolved = runner._prompt_params(
             {"mode": None}, {"mode": None}, {}, interactive=True
@@ -793,7 +793,7 @@ def test_skip_select_param_returns_unset():
 def test_skip_select_includes_dash_in_choices():
     """Select prompt should prepend '-' to the choices list."""
     runner = Runner(command="echo", params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         runner._prompt_params({"mode": None}, {"mode": None}, {}, interactive=True)
     call_args = mock_q.select.call_args
@@ -812,7 +812,7 @@ def test_skip_nargs_returns_unset():
             ),
         ],
     )
-    with patch("genai_runner.questionary") as mock_q:
+    with patch("genai_runner.runner.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "-"
         resolved = runner._prompt_params(
             {"image": None}, {"image": None}, {}, interactive=True
@@ -1096,7 +1096,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
             ],
             tags=["v1"],
         )
-    with patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO):
+    with patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
         runner.run()
     captured = capsys.readouterr()
     out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
@@ -1117,7 +1117,7 @@ def test_no_project_raises_valueerror():
     with patch("sys.argv", ["prog", "--no-interactive"]):
         runner = Runner(command="echo", params=[])
     with (
-        patch("genai_runner._collect_git_info", return_value={}),
+        patch("genai_runner.runner._collect_git_info", return_value={}),
         pytest.raises(ValueError, match="Cannot determine project name"),
     ):
         runner.run()
@@ -1149,9 +1149,9 @@ def test_full_run_with_mocked_wandb(tmp_path):
 
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -1181,9 +1181,9 @@ def test_full_run_explicit_group(tmp_path):
 
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -1382,9 +1382,9 @@ def test_full_run_no_wandb(tmp_path):
         )
 
     with (
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -1441,9 +1441,9 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
 
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -1473,9 +1473,9 @@ def test_no_wandb_failed_run(tmp_path):
         )
 
     with (
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
@@ -1561,9 +1561,9 @@ def test_table_param_logged_to_wandb(tmp_path):
 
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
-        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner._log_code_snapshot"),
-        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
 
