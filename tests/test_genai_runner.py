@@ -12,6 +12,7 @@ import pytest
 
 from genai_runner import (
     UNSET,
+    JsonBackend,
     Metric,
     Output,
     Param,
@@ -59,17 +60,6 @@ def _make_runner(params=None, **kwargs):
     return Runner(
         command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
     )
-
-
-def _empty_run_info():
-    return {
-        "config": {},
-        "tags": [],
-        "group": None,
-        "metrics": {},
-        "summary": {},
-        "files_logged": [],
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -481,9 +471,7 @@ def test_override_provides_required():
 def test_override_preserves_cli_args():
     """CLI args are still used as base; overrides take priority."""
     with patch("sys.argv", ["prog", "--seed", "10"]):
-        runner = Runner(
-            command="echo", params=[Param("seed", type="int", default=42)]
-        )
+        runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
     # CLI gave seed=10, override doesn't touch it
     r2 = runner.override()
     assert r2._resolved_params["seed"] == 10
@@ -535,7 +523,7 @@ def test_override_run_skips_prompting(tmp_path):
         )
     r2 = runner.override(seed=99)
     with (
-        patch("genai_runner.wandb", mock_wb),
+        patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
@@ -814,17 +802,17 @@ def test_interpolate_preserves_bool(tmp_path):
     assert result["off"] is False
 
 
-def test_log_files_skips_unset():
+def test_log_files_skips_unset(tmp_path):
     """_log_files skips params whose value is UNSET."""
     runner = Runner(
         command="echo",
         params=[Param("img", type="path-image")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
     # Should not raise or try to upload
-    runner._log_files(wb_run, {"img": UNSET}, when="before", run_info=ri)
-    wb_run.log.assert_not_called()
+    runner._log_files({"img": UNSET}, when="before")
+    assert json_backend.run_info["files_logged"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -945,44 +933,40 @@ def test_build_type_list_from_cli():
 # ---------------------------------------------------------------------------
 
 
-def test_metric_float():
+def test_metric_float(tmp_path):
     runner = Runner(
         command="echo", metrics=[Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._extract_metrics(wb_run, "some output\nskipped=32.8%\ndone", ri)
-    assert wb_run.summary["skip_pct"] == 32.8
-    assert ri["metrics"]["skip_pct"] == 32.8
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._extract_metrics("some output\nskipped=32.8%\ndone")
+    assert json_backend.run_info["metrics"]["skip_pct"] == 32.8
 
 
-def test_metric_str():
+def test_metric_str(tmp_path):
     runner = Runner(
         command="echo", metrics=[Metric("status", pattern=r"final: (\w+)", type="str")]
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._extract_metrics(wb_run, "final: completed", ri)
-    assert wb_run.summary["status"] == "completed"
-    assert ri["metrics"]["status"] == "completed"
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._extract_metrics("final: completed")
+    assert json_backend.run_info["metrics"]["status"] == "completed"
 
 
-def test_metric_last_match_wins():
+def test_metric_last_match_wins(tmp_path):
     runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._extract_metrics(wb_run, "x=1.0\nx=2.0\nx=3.0", ri)
-    assert wb_run.summary["val"] == 3.0
-    assert ri["metrics"]["val"] == 3.0
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._extract_metrics("x=1.0\nx=2.0\nx=3.0")
+    assert json_backend.run_info["metrics"]["val"] == 3.0
 
 
-def test_metric_no_match():
+def test_metric_no_match(tmp_path):
     runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._extract_metrics(wb_run, "no matches here", ri)
-    assert "val" not in wb_run.summary
-    assert "val" not in ri["metrics"]
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._extract_metrics("no matches here")
+    assert "val" not in json_backend.run_info["metrics"]
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1075,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
         )
 
     with (
-        patch("genai_runner.wandb", mock_wb),
+        patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
@@ -1123,7 +1107,7 @@ def test_full_run_explicit_group(tmp_path):
         )
 
     with (
-        patch("genai_runner.wandb", mock_wb),
+        patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
@@ -1151,12 +1135,14 @@ def test_log_extra_outputs_glob(tmp_path):
         command="echo",
         outputs=[Output("$output/frames/*.png", log_as="image")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    with patch("genai_runner.wandb"):
-        runner._log_extra_outputs(wb_run, tmp_path, ri)
-    # Should upload 2 png files, not the txt
-    assert wb_run.log.call_count == 2
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_extra_outputs(tmp_path)
+    # Should log 2 png files, not the txt
+    logged = [
+        f for f in json_backend.run_info["files_logged"] if f.get("log_as") == "image"
+    ]
+    assert len(logged) == 2
 
 
 def test_log_extra_outputs_glob_zip(tmp_path):
@@ -1169,10 +1155,9 @@ def test_log_extra_outputs_glob_zip(tmp_path):
         command="echo",
         outputs=[Output("$output/debug/*.pt", log_as="zip")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    with patch("genai_runner.wandb"):
-        runner._log_extra_outputs(wb_run, tmp_path, ri)
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_extra_outputs(tmp_path)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -1192,9 +1177,9 @@ def test_log_extra_outputs_dir_zip(tmp_path):
         command="echo",
         outputs=[Output("$output/debug", log_as="zip")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._log_extra_outputs(wb_run, tmp_path, ri)
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_extra_outputs(tmp_path)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -1210,9 +1195,9 @@ def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
         command="echo",
         outputs=[Output("$output/nope/*.png", log_as="image")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._log_extra_outputs(wb_run, tmp_path, ri)
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_extra_outputs(tmp_path)
     assert "matched no files" in capsys.readouterr().out
 
 
@@ -1224,10 +1209,15 @@ def test_log_extra_outputs_single_file(tmp_path):
         command="echo",
         outputs=[Output("$output/meta.json", log_as="artifact")],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
-    runner._log_extra_outputs(wb_run, tmp_path, ri)
-    wb_run.log_artifact.assert_called_once()
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_extra_outputs(tmp_path)
+    logged = [
+        f
+        for f in json_backend.run_info["files_logged"]
+        if f.get("log_as") == "artifact"
+    ]
+    assert len(logged) == 1
 
 
 def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
@@ -1243,10 +1233,10 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
             Output("$output/debug/*.png", log_as="zip"),
         ],
     )
-    wb_run = _mock_wb_run()
-    ri = _empty_run_info()
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        runner._log_extra_outputs(wb_run, tmp_path, ri)
+        runner._log_extra_outputs(tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1318,18 +1308,12 @@ def test_full_run_no_wandb(tmp_path):
             group="test-group",
         )
 
-    mock_wb = MagicMock()
-
     with (
-        patch("genai_runner.wandb", mock_wb),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run()
-
-    # W&B should NOT have been initialized
-    mock_wb.init.assert_not_called()
 
     # Find the output dir
     project_dir = tmp_path / "genai_runs" / "test-repo"
@@ -1379,7 +1363,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
         )
 
     with (
-        patch("genai_runner.wandb", mock_wb),
+        patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
@@ -1409,7 +1393,6 @@ def test_no_wandb_failed_run(tmp_path):
         )
 
     with (
-        patch("genai_runner.wandb", MagicMock()),
         patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner._log_code_snapshot"),
         patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
@@ -1426,9 +1409,10 @@ def test_no_wandb_failed_run(tmp_path):
     assert "failed" in run_info["tags"]
 
 
-def test_extract_metrics_without_wandb():
-    """Metrics are extracted into run_info even when wb_run is None."""
+def test_extract_metrics_with_json_backend(tmp_path):
+    """Metrics are extracted into JsonBackend."""
     runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
-    ri = _empty_run_info()
-    runner._extract_metrics(None, "x=3.14", ri)
-    assert ri["metrics"]["val"] == 3.14
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._extract_metrics("x=3.14")
+    assert json_backend.run_info["metrics"]["val"] == 3.14

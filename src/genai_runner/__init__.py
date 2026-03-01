@@ -20,13 +20,9 @@ import zipfile
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Literal, TextIO
+from typing import IO, Any, Literal, Protocol, TextIO
 
 import questionary
-import wandb
-
-if TYPE_CHECKING:
-    from wandb.sdk.wandb_run import Run as _WBRun
 
 ParamType = Literal[
     "str",
@@ -248,6 +244,174 @@ class _RunFlags:
 
 
 # ---------------------------------------------------------------------------
+# Log backends
+# ---------------------------------------------------------------------------
+
+
+class LogBackend(Protocol):
+    """Protocol for logging backends."""
+
+    @property
+    def run_name(self) -> str: ...
+
+    @property
+    def run_url(self) -> str: ...
+
+    def init(
+        self,
+        project: str,
+        name: str | None,
+        group: str | None,
+        tags: list[str],
+        config: dict,
+    ) -> None: ...
+
+    def update_config(self, updates: dict) -> None: ...
+
+    def log_file(self, path: Path, log_as: str, key: str) -> None: ...
+
+    def log_artifact(self, name: str, type: str, files: list[str]) -> None: ...
+
+    def set_metric(self, name: str, value: object) -> None: ...
+
+    def set_summary(self, summary: dict) -> None: ...
+
+    def set_tags(self, tags: list[str]) -> None: ...
+
+    def finish(self, exit_code: int) -> None: ...
+
+
+class WandbBackend:
+    """Log backend that sends data to Weights & Biases."""
+
+    def __init__(self) -> None:
+        self._run: Any = None
+        self._wandb: Any = None
+
+    @property
+    def run_name(self) -> str:
+        return self._run.name or self._run.id or "run"
+
+    @property
+    def run_url(self) -> str:
+        return self._run.url
+
+    def init(
+        self,
+        project: str,
+        name: str | None,
+        group: str | None,
+        tags: list[str],
+        config: dict,
+    ) -> None:
+        import wandb
+
+        self._wandb = wandb
+        self._run = wandb.init(
+            project=project,
+            name=name,
+            group=group,
+            tags=tags,
+            save_code=True,
+            config=config,
+        )
+
+    def update_config(self, updates: dict) -> None:
+        self._run.config.update(updates)
+
+    def log_file(self, path: Path, log_as: str, key: str) -> None:
+        if log_as == "video":
+            self._run.log({key: self._wandb.Video(str(path))})
+        elif log_as == "image":
+            self._run.log({key: self._wandb.Image(str(path))})
+        elif log_as == "text":
+            text = path.read_text(errors="replace")
+            self._run.log({key: self._wandb.Html(f"<pre>{text}</pre>")})
+        elif log_as == "artifact":
+            artifact = self._wandb.Artifact(f"{key}-{self._run.id}", type=log_as)
+            artifact.add_file(str(path))
+            self._run.log_artifact(artifact)
+
+    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
+        artifact = self._wandb.Artifact(f"{name}-{self._run.id}", type=type)
+        for f in files:
+            artifact.add_file(f)
+        self._run.log_artifact(artifact)
+
+    def set_metric(self, name: str, value: object) -> None:
+        self._run.summary[name] = value
+
+    def set_summary(self, summary: dict) -> None:
+        self._run.summary.update(summary)
+
+    def set_tags(self, tags: list[str]) -> None:
+        self._run.tags = tags
+
+    def finish(self, exit_code: int) -> None:
+        self._run.finish(exit_code=exit_code)
+
+
+class JsonBackend:
+    """Log backend that accumulates run info and writes run_info.json on finish."""
+
+    def __init__(self, output_dir: Path) -> None:
+        self._output_dir = output_dir
+        self.run_info: dict[str, Any] = {
+            "config": {},
+            "tags": [],
+            "group": None,
+            "metrics": {},
+            "summary": {},
+            "files_logged": [],
+        }
+
+    @property
+    def run_name(self) -> str:
+        return "local"
+
+    @property
+    def run_url(self) -> str:
+        return "(local)"
+
+    def init(
+        self,
+        project: str,
+        name: str | None,
+        group: str | None,
+        tags: list[str],
+        config: dict,
+    ) -> None:
+        self.run_info["config"] = dict(config)
+        self.run_info["tags"] = list(tags)
+        self.run_info["group"] = group
+
+    def update_config(self, updates: dict) -> None:
+        self.run_info["config"].update(updates)
+
+    def log_file(self, path: Path, log_as: str, key: str) -> None:
+        self.run_info["files_logged"].append(
+            {"path": str(path), "log_as": log_as, "key": key}
+        )
+
+    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
+        self.run_info["files_logged"].append({"type": type, "files": files})
+
+    def set_metric(self, name: str, value: object) -> None:
+        self.run_info["metrics"][name] = value
+
+    def set_summary(self, summary: dict) -> None:
+        self.run_info["summary"] = summary
+
+    def set_tags(self, tags: list[str]) -> None:
+        self.run_info["tags"] = tags
+
+    def finish(self, exit_code: int) -> None:
+        (self._output_dir / "run_info.json").write_text(
+            json.dumps(self.run_info, indent=2, default=str)
+        )
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -314,9 +478,7 @@ class Runner:
         missing = [
             p.name
             for p in self.params
-            if not p.is_fixed
-            and p.type != "bool"
-            and resolved.get(p.name) is None
+            if not p.is_fixed and p.type != "bool" and resolved.get(p.name) is None
         ]
         if missing:
             msg = f"Missing required param(s): {', '.join(missing)}"
@@ -342,9 +504,7 @@ class Runner:
             overrides_dict = self._overrides or {}
         else:
             overrides_dict = overrides or {}
-            resolved_params = self._resolve_params(
-                self.parsed_params, overrides_dict
-            )
+            resolved_params = self._resolve_params(self.parsed_params, overrides_dict)
             resolved_params = self._prompt_params(
                 resolved_params,
                 self.parsed_params,
@@ -375,17 +535,7 @@ class Runner:
         config["meta/datetime"] = timestamp.isoformat()
         config["meta/command"] = shlex.join(self.command)
 
-        # Local run info (accumulated regardless of W&B mode)
-        run_info: dict[str, Any] = {
-            "config": dict(config),
-            "tags": list(self.tags),
-            "group": self.group,
-            "metrics": {},
-            "summary": {},
-            "files_logged": [],
-        }
-
-        # W&B init
+        # Dry run: print info and return early
         if runner_flags.dry_run:
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
@@ -393,22 +543,30 @@ class Runner:
             print(f"[dry-run] Tags: {self.tags}")
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             run_name = runner_flags.run_name or "run"
-            run_url = "<link to W&B run>"
-        elif runner_flags.no_wandb:
-            wb_run = None
+            output_dir = (
+                _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
+            )
+            interpolated_params = self._interpolate_output(resolved_params, output_dir)
+            colored_cmd = self._format_command(
+                interpolated_params, self.parsed_params, overrides_dict
+            )
+            print(f"Output dir: {output_dir}")
+            print("W&B run: <link to W&B run>")
+            print(f"Command:\n{colored_cmd}")
+            return
+
+        # Init backends
+        wb_backend = None
+        if not runner_flags.no_wandb:
+            wb_backend = WandbBackend()
+            wb_backend.init(
+                project, runner_flags.run_name, self.group, self.tags, config
+            )
+            run_name = wb_backend.run_name
+            run_url = wb_backend.run_url
+        else:
             run_name = runner_flags.run_name or "local"
             run_url = "(W&B disabled)"
-        else:
-            wb_run = wandb.init(
-                project=project,
-                name=runner_flags.run_name,
-                group=self.group,
-                tags=self.tags,
-                save_code=True,
-                config=config,
-            )
-            run_name = wb_run.name or wb_run.id or "run"
-            run_url = wb_run.url
 
         # Output dir
         output_dir = (
@@ -416,27 +574,32 @@ class Runner:
         )
         print(f"Output dir: {output_dir}")
         print(f"W&B run: {run_url}")
-        if not runner_flags.dry_run:
-            run_info["config"]["meta/output_dir"] = str(output_dir)
-            if wb_run is not None:
-                wb_run.config.update({"meta/output_dir": str(output_dir)})
-            output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create JsonBackend (always active)
+        json_backend = JsonBackend(output_dir)
+        json_backend.init(project, run_name, self.group, self.tags, config)
+
+        # Assemble backends
+        self._backends: list[LogBackend] = [json_backend]
+        if wb_backend is not None:
+            self._backends.append(wb_backend)
+
+        # Update config with output_dir
+        for b in self._backends:
+            b.update_config({"meta/output_dir": str(output_dir)})
 
         # Save code snapshot (git archive + dirty diff)
-        if not runner_flags.dry_run:
-            try:
-                _log_code_snapshot(wb_run, output_dir, git_info, run_info)
-            except Exception as e:  # noqa: BLE001
-                print(f"[genai_runner] Warning: code snapshot failed: {e}")
+        try:
+            _log_code_snapshot(self._backends, output_dir, git_info)
+        except Exception as e:  # noqa: BLE001
+            print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
         # Interpolate $output in param values
         interpolated_params = self._interpolate_output(resolved_params, output_dir)
 
         # Log input files (log_when == "before")
-        if not runner_flags.dry_run:
-            self._log_files(
-                wb_run, interpolated_params, when="before", run_info=run_info
-            )
+        self._log_files(interpolated_params, when="before")
 
         # Build command
         cmd = self._build_command(interpolated_params)
@@ -445,37 +608,30 @@ class Runner:
         )
         print(f"Command:\n{colored_cmd}")
 
-        if runner_flags.dry_run:
-            return
-
         # Execute
         print("=" * 60)
         exit_code, duration, stdout_text, aborted = self._execute(cmd, output_dir)
         print("=" * 60)
 
-        # Post-run: never raise, always try to finish W&B run
+        # Post-run: never raise, always try to finish backends
         self._post_run(
-            wb_run,
             interpolated_params,
             output_dir,
             exit_code,
             duration,
             stdout_text,
             self.tags,
-            run_info=run_info,
             aborted=aborted,
         )
 
     def _post_run(
         self,
-        wb_run: _WBRun | None,
         param_values: dict,
         output_dir: Path,
         exit_code: int,
         duration: float,
         stdout_text: str,
         run_tags: list[str],
-        run_info: dict,
         *,
         aborted: bool = False,
     ) -> None:
@@ -491,39 +647,37 @@ class Runner:
             "status": status,
             "output_dir": str(output_dir),
         }
-        run_info["summary"] = summary
 
         steps: list[tuple[str, object]] = [
             (
                 "extract metrics",
-                lambda: self._extract_metrics(wb_run, stdout_text, run_info),
+                lambda: self._extract_metrics(stdout_text),
             ),
             (
                 "log output files",
-                lambda: self._log_files(
-                    wb_run, param_values, when="after", run_info=run_info
-                ),
+                lambda: self._log_files(param_values, when="after"),
             ),
             (
                 "log extra outputs",
-                lambda: self._log_extra_outputs(wb_run, output_dir, run_info),
+                lambda: self._log_extra_outputs(output_dir),
             ),
             (
                 "log run logs",
-                lambda: self._log_run_logs(wb_run, output_dir, run_info),
+                lambda: self._log_run_logs(output_dir),
             ),
             (
                 "tag run status",
-                lambda: _tag_status(wb_run, status, run_tags, run_info),
+                lambda: (
+                    [b.set_tags([*run_tags, status]) for b in self._backends]
+                    if status != "success"
+                    else None
+                ),
+            ),
+            (
+                "update summary",
+                lambda: [b.set_summary(summary) for b in self._backends],
             ),
         ]
-        if wb_run is not None:
-            steps.extend(
-                [
-                    ("update W&B summary", lambda: wb_run.summary.update(summary)),
-                    ("finish W&B run", lambda: wb_run.finish(exit_code=exit_code)),
-                ]
-            )
 
         for step_name, step in steps:
             try:
@@ -531,13 +685,12 @@ class Runner:
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
 
-        # Always write run_info.json
-        try:
-            (output_dir / "run_info.json").write_text(
-                json.dumps(run_info, indent=2, default=str)
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"[genai_runner] Warning: writing run_info.json failed: {e}")
+        # Finish each backend individually so one failure doesn't block others
+        for b in self._backends:
+            try:
+                b.finish(exit_code)
+            except Exception as e:  # noqa: BLE001
+                print(f"[genai_runner] Warning: finish {type(b).__name__} failed: {e}")
 
         print(f"Status: {status} (exit code {exit_code})")
         print(f"Duration: {duration:.1f}s")
@@ -915,9 +1068,7 @@ class Runner:
     # File logging to W&B
     # -----------------------------------------------------------------------
 
-    def _log_files(
-        self, wb_run: _WBRun | None, param_values: dict, when: str, run_info: dict
-    ) -> None:
+    def _log_files(self, param_values: dict, when: str) -> None:
         for p in self.params:
             if p.log_when != when:
                 continue
@@ -933,11 +1084,10 @@ class Runner:
                 if not path.exists():
                     msg = f"File not found: {path} (param '{p.name}')"
                     raise FileNotFoundError(msg)
-                _upload_file(wb_run, path, log_as, label=p.name, run_info=run_info)
+                for b in self._backends:
+                    b.log_file(path, log_as, key=p.name)
 
-    def _log_extra_outputs(
-        self, wb_run: _WBRun | None, output_dir: Path, run_info: dict
-    ) -> None:
+    def _log_extra_outputs(self, output_dir: Path) -> None:
         out = str(output_dir)
         seen_zips: set[str] = set()
         for o in self.outputs:
@@ -958,7 +1108,7 @@ class Runner:
                 base = path
                 matches = sorted(path.rglob("*"))
             else:
-                _log_single_output(wb_run, path, o, out, run_info)
+                _log_single_output(self._backends, path, o, out)
                 continue
 
             # Glob or directory: upload matches
@@ -978,39 +1128,29 @@ class Runner:
                     )
                     raise ValueError(msg)
                 seen_zips.add(label)
-                _zip_and_upload(wb_run, matches, base, output_dir, label, run_info)
+                _zip_and_upload(self._backends, matches, base, output_dir, label)
             else:
                 for m in matches:
                     if m.is_file():
-                        _upload_file(
-                            wb_run, m, o.log_as, label=label, run_info=run_info
-                        )
+                        for b in self._backends:
+                            b.log_file(m, o.log_as, key=label)
 
-    def _log_run_logs(
-        self, wb_run: _WBRun | None, output_dir: Path, run_info: dict
-    ) -> None:
+    def _log_run_logs(self, output_dir: Path) -> None:
         existing_logs = [
             output_dir / name
             for name in ("run.log", "stdout.log", "stderr.log")
             if (output_dir / name).exists()
         ]
         if existing_logs:
-            run_info["files_logged"].append(
-                {"type": "log", "files": [str(f) for f in existing_logs]}
-            )
-            if wb_run is not None:
-                artifact = wandb.Artifact(f"logs-{wb_run.id}", type="log")
-                for f in existing_logs:
-                    artifact.add_file(str(f))
-                wb_run.log_artifact(artifact)
+            files = [str(f) for f in existing_logs]
+            for b in self._backends:
+                b.log_artifact("logs", "log", files)
 
     # -----------------------------------------------------------------------
     # Metric extraction
     # -----------------------------------------------------------------------
 
-    def _extract_metrics(
-        self, wb_run: _WBRun | None, stdout_text: str, run_info: dict
-    ) -> None:
+    def _extract_metrics(self, stdout_text: str) -> None:
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
             if not matches:
@@ -1028,9 +1168,8 @@ class Runner:
                     val = raw
             else:
                 val = raw
-            run_info["metrics"][m.name] = val
-            if wb_run is not None:
-                wb_run.summary[m.name] = val
+            for b in self._backends:
+                b.set_metric(m.name, val)
 
 
 # ---------------------------------------------------------------------------
@@ -1059,7 +1198,7 @@ def _split_glob(path_str: str) -> tuple[Path, str]:
 
 
 def _log_single_output(
-    wb_run: _WBRun | None, path: Path, o: Output, out: str, run_info: dict
+    backends: list[LogBackend], path: Path, o: Output, out: str
 ) -> None:
     """Handle a single (non-glob, non-directory) output file."""
     if not path.exists():
@@ -1070,16 +1209,17 @@ def _log_single_output(
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, dst)
         path = dst
-    _upload_file(wb_run, path, o.log_as, label=o.name, run_info=run_info)
+    key = o.name or path.stem
+    for b in backends:
+        b.log_file(path, o.log_as, key=key)
 
 
 def _zip_and_upload(
-    wb_run: _WBRun | None,
+    backends: list[LogBackend],
     matches: list[Path],
     base: Path,
     output_dir: Path,
     label: str,
-    run_info: dict,
 ) -> None:
     """Zip matched files and upload as artifact."""
     zip_path = output_dir / f"{label}.zip"
@@ -1087,44 +1227,8 @@ def _zip_and_upload(
         for m in matches:
             if m.is_file():
                 zf.write(m, m.relative_to(base))
-    _upload_file(wb_run, zip_path, "artifact", label=label, run_info=run_info)
-
-
-def _upload_file(
-    wb_run: _WBRun | None,
-    path: Path,
-    log_as: str,
-    label: str | None = None,
-    run_info: dict | None = None,
-) -> None:
-    key = label or path.stem
-    if run_info is not None:
-        run_info["files_logged"].append(
-            {"path": str(path), "log_as": log_as, "key": key}
-        )
-    if wb_run is None:
-        return
-    if log_as == "video":
-        wb_run.log({key: wandb.Video(str(path))})
-    elif log_as == "image":
-        wb_run.log({key: wandb.Image(str(path))})
-    elif log_as == "text":
-        text = path.read_text(errors="replace")
-        wb_run.log({key: wandb.Html(f"<pre>{text}</pre>")})
-    elif log_as == "artifact":
-        artifact = wandb.Artifact(f"{key}-{wb_run.id}", type=log_as)
-        artifact.add_file(str(path))
-        wb_run.log_artifact(artifact)
-
-
-def _tag_status(
-    wb_run: _WBRun | None, status: str, run_tags: list[str], run_info: dict
-) -> None:
-    """Add 'failed' or 'aborted' tag when not successful."""
-    if status != "success":
-        run_info["tags"] = [*run_tags, status]
-        if wb_run is not None:
-            wb_run.tags = [*run_tags, status]
+    for b in backends:
+        b.log_file(zip_path, "artifact", key=label)
 
 
 def _collect_git_info() -> dict:
@@ -1150,7 +1254,7 @@ def _collect_git_info() -> dict:
 
 
 def _log_code_snapshot(
-    wb_run: _WBRun | None, output_dir: Path, git_info: dict, run_info: dict
+    backends: list[LogBackend], output_dir: Path, git_info: dict
 ) -> None:
     """Save a full code snapshot: git archive + dirty diff."""
     if not git_info:
@@ -1182,16 +1286,9 @@ def _log_code_snapshot(
             diff_path = code_dir / "dirty.patch"
             diff_path.write_bytes(diff_result.stdout)
 
-    # Record in run_info
+    # Record in all backends
     files = [str(archive_path)]
     if diff_path and diff_path.exists():
         files.append(str(diff_path))
-    run_info["files_logged"].append({"type": "code", "files": files})
-
-    # Upload as W&B artifact
-    if wb_run is not None:
-        artifact = wandb.Artifact(f"code-{wb_run.id}", type="code")
-        artifact.add_file(str(archive_path))
-        if diff_path and diff_path.exists():
-            artifact.add_file(str(diff_path))
-        wb_run.log_artifact(artifact)
+    for b in backends:
+        b.log_artifact("code", "code", files)
