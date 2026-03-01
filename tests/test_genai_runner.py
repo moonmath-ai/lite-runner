@@ -490,13 +490,6 @@ def test_override_fixed_params_included():
     assert r2._resolved_params["out"] == "$output/video.mp4"
 
 
-def test_override_run_rejects_double_overrides():
-    runner = Runner(command="echo", params=[Param("seed", type="int", default=42)])
-    r2 = runner.override(seed=99)
-    with pytest.raises(ValueError, match="already-overridden"):
-        r2.run(overrides={"seed": 1})
-
-
 def test_override_chained():
     """Calling override() on an already-overridden runner works."""
     runner = Runner(

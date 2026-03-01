@@ -562,19 +562,13 @@ class Runner:
         r._filled = True
         return r
 
-    def run(self, overrides: dict[str, object] | None = None) -> None:
+    def run(self) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
 
         r = self
         if r._resolved_params is None:
-            r = r.resolve(overrides)
-        elif overrides is not None:
-            msg = (
-                "Cannot pass overrides to run() on an"
-                " already-overridden Runner; call override() again"
-            )
-            raise ValueError(msg)
+            r = r.resolve()
         if not r._filled:
             r = r.fill()
         resolved_params = r._resolved_params
