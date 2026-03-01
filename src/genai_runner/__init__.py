@@ -614,6 +614,8 @@ class Runner:
 
         # Build command
         cmd = self._build_command(interpolated_params)
+        for b in self._backends:
+            b.update_config({"meta/full_command": shlex.join(cmd)})
         colored_cmd = self._format_command(
             interpolated_params, self.parsed_params, overrides_dict
         )
