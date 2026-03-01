@@ -1033,12 +1033,12 @@ def test_dry_run_prints_command_no_wandb(capsys):
         runner.run()
     captured = capsys.readouterr()
     out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
-    assert "[dry-run]" in out
+    assert "Run name: run" in out
     assert "--prompt test" in out
     assert "--seed 42" in out
     assert "$output/video.mp4" in out
-    assert "Run name: (auto)" in out
     assert "Tags: ['v1']" in out
+    assert "Project: test-repo" in out
 
 
 def test_no_project_raises_valueerror():
@@ -1348,6 +1348,10 @@ def test_full_run_no_wandb(tmp_path):
     assert (output_dir / "stdout.log").exists()
     assert (output_dir / "run.log").exists()
 
+    # wandb keys should NOT be in config
+    assert "wandb/name" not in run_info["config"]
+    assert "wandb/url" not in run_info["config"]
+
 
 def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     """Even with W&B enabled, run_info.json is written."""
@@ -1381,6 +1385,9 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     assert run_info_path.exists()
     run_info = json.loads(run_info_path.read_text())
     assert run_info["summary"]["status"] == "success"
+    # wandb info should be in config
+    assert run_info["config"]["wandb/name"] == "test-run-42"
+    assert run_info["config"]["wandb/url"] == "https://wandb.test/run"
 
 
 def test_no_wandb_failed_run(tmp_path):

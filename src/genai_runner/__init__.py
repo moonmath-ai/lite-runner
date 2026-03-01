@@ -351,6 +351,60 @@ class WandbBackend:
         self._run.finish(exit_code=exit_code)
 
 
+class StdoutBackend:
+    """Log backend that prints run information to stdout."""
+
+    def __init__(self) -> None:
+        self._run_name = "run"
+        self._run_url = ""
+
+    @property
+    def run_name(self) -> str:
+        return self._run_name
+
+    @property
+    def run_url(self) -> str:
+        return self._run_url
+
+    def init(
+        self,
+        project: str,
+        name: str | None,
+        group: str | None,
+        tags: list[str],
+        config: dict,
+    ) -> None:
+        self._run_name = name or "run"
+        print(f"Project: {project}")
+        print(f"Run name: {self._run_name}")
+        if group:
+            print(f"Group: {group}")
+        if tags:
+            print(f"Tags: {tags}")
+        print(f"Config:\n{pprint.pformat(config)}")
+
+    def update_config(self, updates: dict) -> None:
+        pass
+
+    def log_file(self, path: Path, log_as: str, key: str) -> None:
+        print(f"  logging {log_as}: {path}")
+
+    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
+        print(f"  logging artifact: {name} ({type}, {len(files)} file(s))")
+
+    def set_metric(self, name: str, value: object) -> None:
+        print(f"  metric: {name} = {value}")
+
+    def set_summary(self, summary: dict) -> None:
+        pass
+
+    def set_tags(self, tags: list[str]) -> None:
+        pass
+
+    def finish(self, exit_code: int) -> None:
+        pass
+
+
 class JsonBackend:
     """Log backend that accumulates run info and writes run_info.json on finish."""
 
@@ -535,35 +589,18 @@ class Runner:
         config["meta/datetime"] = timestamp.isoformat()
         config["meta/command"] = shlex.join(self.command)
 
-        # Dry run: print info and return early
-        if runner_flags.dry_run:
-            print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Run name: {runner_flags.run_name or '(auto)'}")
-            print(f"[dry-run] Group: {self.group}")
-            print(f"[dry-run] Tags: {self.tags}")
-            print(f"[dry-run] Config:\n{pprint.pformat(config)}")
-            run_name = runner_flags.run_name or "run"
-            output_dir = (
-                _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
-            )
-            interpolated_params = self._interpolate_output(resolved_params, output_dir)
-            colored_cmd = self._format_command(
-                interpolated_params, self.parsed_params, overrides_dict
-            )
-            print(f"Output dir: {output_dir}")
-            print("W&B run: <link to W&B run>")
-            print(f"Command:\n{colored_cmd}")
-            return
-
-        # Init backends
+        # Init WandbBackend first (needs to happen early to get run_name)
         wb_backend = None
-        if not runner_flags.no_wandb:
+        if not runner_flags.dry_run and not runner_flags.no_wandb:
             wb_backend = WandbBackend()
             wb_backend.init(
                 project, runner_flags.run_name, self.group, self.tags, config
             )
             run_name = wb_backend.run_name
             run_url = wb_backend.run_url
+        elif runner_flags.dry_run:
+            run_name = runner_flags.run_name or "run"
+            run_url = "(dry run)"
         else:
             run_name = runner_flags.run_name or "local"
             run_url = "(W&B disabled)"
@@ -572,22 +609,48 @@ class Runner:
         output_dir = (
             _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
         )
+
+        # Augment config with output_dir and wandb info
+        config["meta/output_dir"] = str(output_dir)
+        if wb_backend is not None:
+            config["wandb/name"] = run_name
+            config["wandb/url"] = run_url
+            wb_backend.update_config(
+                {
+                    "meta/output_dir": str(output_dir),
+                    "wandb/name": run_name,
+                    "wandb/url": run_url,
+                }
+            )
+
+        # StdoutBackend is always active
+        stdout_backend = StdoutBackend()
+        stdout_backend.init(project, run_name, self.group, self.tags, config)
+
+        # Dry run: print command and return (no dirs, no execution)
+        if runner_flags.dry_run:
+            self._backends = [stdout_backend]
+            interpolated_params = self._interpolate_output(resolved_params, output_dir)
+            colored_cmd = self._format_command(
+                interpolated_params, self.parsed_params, overrides_dict
+            )
+            print(f"Output dir: {output_dir}")
+            print(f"Command:\n{colored_cmd}")
+            return
+
+        # Create output dir
+        output_dir.mkdir(parents=True, exist_ok=True)
         print(f"Output dir: {output_dir}")
         print(f"W&B run: {run_url}")
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create JsonBackend (always active)
+        # JsonBackend is always active for non-dry runs
         json_backend = JsonBackend(output_dir)
         json_backend.init(project, run_name, self.group, self.tags, config)
 
         # Assemble backends
-        self._backends: list[LogBackend] = [json_backend]
+        self._backends: list[LogBackend] = [stdout_backend, json_backend]
         if wb_backend is not None:
             self._backends.append(wb_backend)
-
-        # Update config with output_dir
-        for b in self._backends:
-            b.update_config({"meta/output_dir": str(output_dir)})
 
         # Save code snapshot (git archive + dirty diff)
         try:
