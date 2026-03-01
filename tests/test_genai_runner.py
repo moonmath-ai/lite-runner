@@ -1501,3 +1501,78 @@ def test_extract_metrics_with_json_backend(tmp_path):
     runner._backends = [json_backend]
     runner._extract_metrics("x=3.14")
     assert json_backend.run_info["metrics"]["val"] == 3.14
+
+
+# ---------------------------------------------------------------------------
+# Table param logging
+# ---------------------------------------------------------------------------
+
+
+def test_table_param_logged_to_json_backend(tmp_path):
+    """Params with table=True are logged via log_table to JsonBackend."""
+    runner = _make_runner(
+        params=[Param("prompt", table=True), Param("seed", type="int", default=42)],
+    )
+    json_backend = JsonBackend(tmp_path)
+    runner._backends = [json_backend]
+    runner._log_table_params({"prompt": "a cat", "seed": 42})
+    assert "tables" in json_backend.run_info
+    table = json_backend.run_info["tables"]["params"]
+    assert table["columns"] == ["name", "value"]
+    assert ["prompt", "a cat"] in table["data"]
+    # seed has table=False, should NOT appear
+    assert all(row[0] != "seed" for row in table["data"])
+
+
+def test_table_param_skips_unset():
+    """UNSET and None table params are excluded from the table."""
+    runner = _make_runner(
+        params=[Param("prompt", table=True), Param("neg", table=True)],
+    )
+    json_backend = JsonBackend(Path("/tmp"))
+    runner._backends = [json_backend]
+    runner._log_table_params({"prompt": "a cat", "neg": None})
+    table = json_backend.run_info["tables"]["params"]
+    assert len(table["data"]) == 1
+    assert table["data"][0] == ["prompt", "a cat"]
+
+
+def test_table_param_no_table_params_skips():
+    """No log_table call when no params have table=True."""
+    runner = _make_runner(params=[Param("seed", type="int", default=42)])
+    backend = MagicMock()
+    runner._backends = [backend]
+    runner._log_table_params({"seed": 42})
+    backend.log_table.assert_not_called()
+
+
+def test_table_param_logged_to_wandb(tmp_path):
+    """Full integration: table=True param creates a wandb.Table in run."""
+    mock_wb = MagicMock()
+    wb_run = _mock_wb_run()
+    mock_wb.init.return_value = wb_run
+    mock_wb.Artifact = MagicMock()
+    mock_table = MagicMock()
+    mock_wb.Table.return_value = mock_table
+
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = Runner(
+            command=f"{sys.executable} -c \"print('ok')\"",
+            params=[
+                Param("prompt", default="a cat", table=True),
+                Param("seed", type="int", default=42),
+            ],
+        )
+
+    with (
+        patch.dict("sys.modules", {"wandb": mock_wb}),
+        patch("genai_runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner._log_code_snapshot"),
+        patch("genai_runner._RUNS_DIR", tmp_path / "genai_runs"),
+    ):
+        runner.run()
+
+    mock_wb.Table.assert_called_once_with(
+        columns=["name", "value"], data=[["prompt", "a cat"]]
+    )
+    wb_run.log.assert_any_call({"params": mock_table})

@@ -111,6 +111,9 @@ class Param:
         hidden: If True, skip interactive prompting and use the
             default value.  The param still accepts CLI flags and
             is logged normally.  Requires a default.
+        table: If True, log the resolved value in a W&B Table for
+            prominent visibility on the run page.  Useful for
+            prompts and other long text params.
     """
 
     name: str
@@ -123,6 +126,7 @@ class Param:
     labels: list[str] | None = None
     log_when: str | None = None
     hidden: bool = False
+    table: bool = False
 
     def __post_init__(self) -> None:
         self._dest = self.name.replace("-", "_")
@@ -278,6 +282,10 @@ class LogBackend(Protocol):
 
     def set_tags(self, tags: list[str]) -> None: ...
 
+    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
+        """Log a table of values for prominent display."""
+        ...
+
     def finish(self, exit_code: int) -> None: ...
 
 
@@ -347,6 +355,10 @@ class WandbBackend:
     def set_tags(self, tags: list[str]) -> None:
         self._run.tags = tags
 
+    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
+        table = self._wandb.Table(columns=columns, data=data)
+        self._run.log({key: table})
+
     def finish(self, exit_code: int) -> None:
         self._run.finish(exit_code=exit_code)
 
@@ -404,6 +416,12 @@ class JsonBackend:
 
     def set_tags(self, tags: list[str]) -> None:
         self.run_info["tags"] = tags
+
+    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
+        self.run_info.setdefault("tables", {})[key] = {
+            "columns": columns,
+            "data": data,
+        }
 
     def finish(self, exit_code: int) -> None:
         (self._output_dir / "run_info.json").write_text(
@@ -658,6 +676,9 @@ class Runner:
 
         # Interpolate $output in param values
         interpolated_params = self._interpolate_output(resolved_params, output_dir)
+
+        # Log table params (prompt, etc.)
+        self._log_table_params(resolved_params)
 
         # Log input files (log_when == "before")
         self._log_files(interpolated_params, when="before")
@@ -1164,6 +1185,20 @@ class Runner:
         return proc.returncode, duration, "".join(stdout_lines), aborted
 
     # -----------------------------------------------------------------------
+    # Table logging (prominent display of prompts etc.)
+    # -----------------------------------------------------------------------
+
+    def _log_table_params(self, resolved_params: dict) -> None:
+        """Log params marked with table=True as a W&B Table."""
+        rows = [
+            [p.name, resolved_params.get(p.name)]
+            for p in self.params
+            if p.table and resolved_params.get(p.name) not in (None, UNSET)
+        ]
+        if rows:
+            for b in self._backends:
+                b.log_table("params", ["name", "value"], rows)
+
     # File logging to W&B
     # -----------------------------------------------------------------------
 
