@@ -539,6 +539,80 @@ def test_override_run_skips_prompting(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# resolve() / fill() pipeline
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_returns_new_runner():
+    runner = _make_runner(params=[Param("seed", type="int", default=42)])
+    r2 = runner.resolve(seed=99)
+    assert r2 is not runner
+    assert r2._resolved_params is not None
+    assert r2._resolved_params["seed"] == 99
+    assert not r2._filled
+
+
+def test_resolve_allows_missing_params():
+    """resolve() does NOT raise on missing required params."""
+    runner = _make_runner(params=[Param("prompt")])
+    r2 = runner.resolve()  # prompt is None — that's OK
+    assert r2._resolved_params["prompt"] is None
+
+
+def test_resolve_validates_unknown_keys():
+    runner = _make_runner(params=[Param("seed", type="int")])
+    with pytest.raises(ValueError, match="Unknown param"):
+        runner.resolve(bogus=1)
+
+
+def test_resolve_carries_forward_overrides():
+    runner = _make_runner(
+        params=[Param("seed", type="int", default=1), Param("mode", default="a")],
+    )
+    r2 = runner.resolve(seed=42)
+    r3 = r2.resolve(mode="b")
+    assert r3._resolved_params["seed"] == 42
+    assert r3._resolved_params["mode"] == "b"
+
+
+def test_fill_prompts_missing():
+    runner = _make_runner(params=[Param("prompt")])
+    r2 = runner.resolve()
+    with patch("genai_runner.questionary") as mock_q:
+        mock_q.text.return_value.ask.return_value = "a cat"
+        r3 = r2.fill()
+    assert r3._filled
+    assert r3._resolved_params["prompt"] == "a cat"
+
+
+def test_fill_without_resolve_raises():
+    runner = _make_runner(params=[Param("seed", type="int")])
+    with pytest.raises(ValueError, match="resolve.*first"):
+        runner.fill()
+
+
+def test_fill_non_interactive_exits_on_missing():
+    with patch("sys.argv", ["prog", "--no-interactive"]):
+        runner = _make_runner(params=[Param("prompt")])
+    r2 = runner.resolve()
+    with pytest.raises(SystemExit):
+        r2.fill()
+
+
+def test_resolve_then_override_chain():
+    """resolve() followed by override() on a different runner."""
+    runner = _make_runner(
+        params=[Param("seed", type="int", default=1), Param("mode", default="fast")],
+    )
+    r2 = runner.resolve(seed=42)
+    # override() requires completeness — seed carried, mode has default
+    r3 = r2.override(mode="slow")
+    assert r3._filled
+    assert r3._resolved_params["seed"] == 42
+    assert r3._resolved_params["mode"] == "slow"
+
+
+# ---------------------------------------------------------------------------
 
 
 def test_resolve_fixed_override():

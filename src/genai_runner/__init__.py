@@ -436,45 +436,39 @@ class Runner:
         self.parsed_params, self.runner_flags = self._parse_cli_args()
         self._resolved_params: dict | None = None
         self._overrides: dict | None = None
+        self._filled: bool = False
 
-    def override(
-        self, overrides: dict[str, object] | None = None, **kwargs: object
-    ) -> Runner:
-        """Return a copy of this Runner with param overrides pre-resolved.
+    # -------------------------------------------------------------------
+    # Helpers: merge overrides and check completeness
+    # -------------------------------------------------------------------
 
-        Resolves and validates all params eagerly so errors surface
-        here rather than at run() time.  Accepts a dict and/or keyword
-        arguments (underscores in kwarg names are mapped to hyphens).
+    def _merge_overrides(
+        self,
+        overrides: dict[str, object] | None,
+        kwargs: dict[str, object],
+    ) -> dict[str, object]:
+        """Merge previous overrides, new overrides dict, and kwargs.
 
-        Example::
-
-            r1 = runner.override(seed=42, prompt="a cat")
-            r2 = runner.override(seed=99, prompt="a dog")
-            # both validated ^^
-            r1.run()
-            r2.run()
+        Carries forward overrides from a previous resolve/override call,
+        maps underscore kwargs to param names, and validates keys.
         """
         merged: dict[str, object] = {}
-        # Carry forward overrides from a previous override() call
         if self._overrides is not None:
             merged.update(self._overrides)
         merged.update(overrides or {})
-        # kwargs use underscores; map to param names via dest lookup
         name_by_dest = {p.dest: p.name for p in self.params}
         for k, v in kwargs.items():
             merged[name_by_dest.get(k, k)] = v
 
-        # Validate override keys
         valid_names = {p.name for p in self.params}
         unknown = set(merged) - valid_names
         if unknown:
             msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
             raise ValueError(msg)
+        return merged
 
-        # Resolve: overrides > CLI > defaults
-        resolved = self._resolve_params(self.parsed_params, merged)
-
-        # Check for missing required params
+    def _check_complete(self, resolved: dict) -> None:
+        """Raise ValueError if any required params are still None."""
         missing = [
             p.name
             for p in self.params
@@ -484,33 +478,89 @@ class Runner:
             msg = f"Missing required param(s): {', '.join(missing)}"
             raise ValueError(msg)
 
+    # -------------------------------------------------------------------
+    # Public param pipeline: resolve → fill
+    # -------------------------------------------------------------------
+
+    def resolve(
+        self, overrides: dict[str, object] | None = None, **kwargs: object
+    ) -> Runner:
+        """Return a copy with overrides merged and params resolved.
+
+        Priority chain: overrides > CLI args > callable defaults > fixed.
+        Does NOT check completeness — missing params are OK at this stage.
+        """
+        merged = self._merge_overrides(overrides, kwargs)
+        resolved = self._resolve_params(self.parsed_params, merged)
+
         new = copy.copy(self)
         new._resolved_params = resolved
         new._overrides = merged
+        new._filled = False
         return new
+
+    def fill(self) -> Runner:
+        """Return a copy with missing params filled via interactive prompts.
+
+        In non-interactive mode, raises SystemExit if required params
+        are missing.  Must be called after resolve().
+        """
+        if self._resolved_params is None:
+            msg = "fill() requires resolve() first"
+            raise ValueError(msg)
+
+        filled = self._prompt_params(
+            self._resolved_params,
+            self.parsed_params,
+            self._overrides or {},
+            interactive=self.runner_flags.interactive,
+        )
+
+        new = copy.copy(self)
+        new._resolved_params = filled
+        new._overrides = self._overrides
+        new._filled = True
+        return new
+
+    def override(
+        self, overrides: dict[str, object] | None = None, **kwargs: object
+    ) -> Runner:
+        """Return a copy with overrides pre-resolved and validated complete.
+
+        Convenience method: resolve() + completeness check in one call.
+        All params must be determined (via overrides, CLI, or defaults);
+        raises ValueError if any required param is still missing.
+
+        Example::
+
+            r1 = runner.override(seed=42, prompt="a cat")
+            r2 = runner.override(seed=99, prompt="a dog")
+            # both validated ^^
+            r1.run()
+            r2.run()
+        """
+        r = self.resolve(overrides, **kwargs)
+        self._check_complete(r._resolved_params)
+        r._filled = True
+        return r
 
     def run(self, overrides: dict[str, object] | None = None) -> None:
         """Execute the full run lifecycle."""
         runner_flags = self.runner_flags
 
-        if self._resolved_params is not None:
-            if overrides is not None:
-                msg = (
-                    "Cannot pass overrides to run() on an"
-                    " already-overridden Runner; call override() again"
-                )
-                raise ValueError(msg)
-            resolved_params = self._resolved_params
-            overrides_dict = self._overrides or {}
-        else:
-            overrides_dict = overrides or {}
-            resolved_params = self._resolve_params(self.parsed_params, overrides_dict)
-            resolved_params = self._prompt_params(
-                resolved_params,
-                self.parsed_params,
-                overrides_dict,
-                interactive=runner_flags.interactive,
+        r = self
+        if r._resolved_params is None:
+            r = r.resolve(overrides)
+        elif overrides is not None:
+            msg = (
+                "Cannot pass overrides to run() on an"
+                " already-overridden Runner; call override() again"
             )
+            raise ValueError(msg)
+        if not r._filled:
+            r = r.fill()
+        resolved_params = r._resolved_params
+        overrides_dict = r._overrides or {}
 
         # Git info and project
         git_info = _collect_git_info()
