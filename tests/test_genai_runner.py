@@ -842,7 +842,7 @@ def test_config_logs_unset_as_marker():
     with patch(
         "sys.argv", ["prog", "--dry-run", "--no-interactive", "--prompt", "test"]
     ):
-        runner = Runner(
+        _runner = Runner(
             command="echo",
             params=[Param("prompt"), Param("mode", default="fast")],
         )
@@ -1123,9 +1123,11 @@ def test_no_project_raises_valueerror():
     """Runner with no wandb_project and no git repo raises ValueError."""
     with patch("sys.argv", ["prog", "--no-interactive"]):
         runner = Runner(command="echo", params=[])
-    with patch("genai_runner._collect_git_info", return_value={}):
-        with pytest.raises(ValueError, match="Cannot determine project name"):
-            runner.run()
+    with (
+        patch("genai_runner._collect_git_info", return_value={}),
+        pytest.raises(ValueError, match="Cannot determine project name"),
+    ):
+        runner.run()
 
 
 # ---------------------------------------------------------------------------

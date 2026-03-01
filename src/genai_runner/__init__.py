@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import zipfile
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any, Literal, Protocol, TextIO
@@ -1040,9 +1040,8 @@ class Runner:
             assert val is not None
             assert p.flag is not None
 
-            if p.type == "bool":
-                if not val:
-                    continue
+            if p.type == "bool" and not val:
+                continue
 
             if p.is_fixed:
                 kind = "value"
@@ -1133,10 +1132,8 @@ class Runner:
 
             run_env = {**os.environ, **self.env}
             if "COLUMNS" not in run_env:
-                try:
+                with suppress(OSError):
                     run_env["COLUMNS"] = str(os.get_terminal_size().columns)
-                except OSError:
-                    pass
 
             proc = subprocess.Popen(  # noqa: S603
                 cmd,
