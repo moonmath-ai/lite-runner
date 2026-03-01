@@ -1033,12 +1033,16 @@ def test_dry_run_prints_command_no_wandb(capsys):
         runner.run()
     captured = capsys.readouterr()
     out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
-    assert "Run name: run" in out
+    assert "[dry-run]" in out
     assert "--prompt test" in out
     assert "--seed 42" in out
     assert "$output/video.mp4" in out
+    assert "Run name: run" in out
     assert "Tags: ['v1']" in out
-    assert "Project: test-repo" in out
+    # File plan: output-path is log_when="after" (value has $output)
+    assert "Files to log (after run):" in out
+    assert "video:" in out
+    assert "output-path" in out
 
 
 def test_no_project_raises_valueerror():

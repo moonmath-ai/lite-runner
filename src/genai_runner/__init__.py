@@ -351,60 +351,6 @@ class WandbBackend:
         self._run.finish(exit_code=exit_code)
 
 
-class StdoutBackend:
-    """Log backend that prints run information to stdout."""
-
-    def __init__(self) -> None:
-        self._run_name = "run"
-        self._run_url = ""
-
-    @property
-    def run_name(self) -> str:
-        return self._run_name
-
-    @property
-    def run_url(self) -> str:
-        return self._run_url
-
-    def init(
-        self,
-        project: str,
-        name: str | None,
-        group: str | None,
-        tags: list[str],
-        config: dict,
-    ) -> None:
-        self._run_name = name or "run"
-        print(f"Project: {project}")
-        print(f"Run name: {self._run_name}")
-        if group:
-            print(f"Group: {group}")
-        if tags:
-            print(f"Tags: {tags}")
-        print(f"Config:\n{pprint.pformat(config)}")
-
-    def update_config(self, updates: dict) -> None:
-        pass
-
-    def log_file(self, path: Path, log_as: str, key: str) -> None:
-        print(f"  logging {log_as}: {path}")
-
-    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        print(f"  logging artifact: {name} ({type}, {len(files)} file(s))")
-
-    def set_metric(self, name: str, value: object) -> None:
-        print(f"  metric: {name} = {value}")
-
-    def set_summary(self, summary: dict) -> None:
-        pass
-
-    def set_tags(self, tags: list[str]) -> None:
-        pass
-
-    def finish(self, exit_code: int) -> None:
-        pass
-
-
 class JsonBackend:
     """Log backend that accumulates run info and writes run_info.json on finish."""
 
@@ -623,19 +569,21 @@ class Runner:
                 }
             )
 
-        # StdoutBackend is always active
-        stdout_backend = StdoutBackend()
-        stdout_backend.init(project, run_name, self.group, self.tags, config)
-
-        # Dry run: print command and return (no dirs, no execution)
+        # Dry run: print summary and return (no dirs, no execution)
         if runner_flags.dry_run:
-            self._backends = [stdout_backend]
+            print(f"[dry-run] Project: {project}")
+            print(f"[dry-run] Run name: {run_name}")
+            print(f"[dry-run] Group: {self.group}")
+            print(f"[dry-run] Tags: {self.tags}")
+            print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             interpolated_params = self._interpolate_output(resolved_params, output_dir)
             colored_cmd = self._format_command(
                 interpolated_params, self.parsed_params, overrides_dict
             )
             print(f"Output dir: {output_dir}")
             print(f"Command:\n{colored_cmd}")
+            # Show what files would be logged
+            self._print_file_plan(interpolated_params)
             return
 
         # Create output dir
@@ -643,12 +591,12 @@ class Runner:
         print(f"Output dir: {output_dir}")
         print(f"W&B run: {run_url}")
 
-        # JsonBackend is always active for non-dry runs
+        # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
         json_backend.init(project, run_name, self.group, self.tags, config)
 
         # Assemble backends
-        self._backends: list[LogBackend] = [stdout_backend, json_backend]
+        self._backends: list[LogBackend] = [json_backend]
         if wb_backend is not None:
             self._backends.append(wb_backend)
 
@@ -932,6 +880,42 @@ class Runner:
                 return UNSET
             parts.append(answer)
         return _cast_nargs(parts, element_types)
+
+    # -----------------------------------------------------------------------
+    # Dry-run file plan
+    # -----------------------------------------------------------------------
+
+    def _print_file_plan(self, param_values: dict) -> None:
+        """Print what files would be logged (for --dry-run)."""
+        before = []
+        after = []
+        for p in self.params:
+            val = param_values.get(p.name)
+            if val is None or val is UNSET:
+                continue
+            if p.log_when is None:
+                continue
+            values = val if isinstance(val, list) else [val]
+            for v, t in zip(values, p.type_list, strict=True):
+                log_as = _log_as_from_type(t)
+                if log_as is None:
+                    continue
+                entry = f"  {log_as}: {v} (param: {p.name})"
+                if p.log_when == "before":
+                    before.append(entry)
+                else:
+                    after.append(entry)
+        for o in self.outputs:
+            entry = f"  {o.log_as}: {o.path}"
+            if o.name:
+                entry += f" (name: {o.name})"
+            after.append(entry)
+        if before:
+            print("Files to log (before run):")
+            print("\n".join(before))
+        if after:
+            print("Files to log (after run):")
+            print("\n".join(after))
 
     # -----------------------------------------------------------------------
     # $output interpolation
