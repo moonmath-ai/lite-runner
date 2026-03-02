@@ -157,7 +157,7 @@ runner = Runner(
             help="Stages to capture (e.g. '1,2')",
         ),
         # --- Enhance ---
-        Param("enhance-prompt", type="bool", hidden=True, default=False),
+        Param("enhance-prompt", type="bool", prompt=False, default=False),
     ],
     metrics=[
         Metric("skipped_pct", pattern=r"skipped=([\d.]+)%"),

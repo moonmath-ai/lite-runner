@@ -29,4 +29,4 @@ if __name__ == "__main__":
         print(f"\n{'=' * 60}")
         print(f"SWEEP: threshold={thresh}")
         print(f"{'=' * 60}\n")
-        runner.run(overrides={"threshold": thresh})
+        runner.override(threshold=thresh).run(interactive=False)
