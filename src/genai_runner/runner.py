@@ -41,6 +41,33 @@ _RUNS_DIR = Path.home() / "genai_runs"
 
 @dataclass
 class Runner:
+    """Experiment runner that wraps a model CLI with tracking.
+
+    Declare params, outputs, and metrics, then call :meth:`run`.
+    The runner handles CLI parsing, interactive prompts, W&B logging,
+    subprocess execution, metric extraction, and file uploads.
+
+    Pipeline methods (:meth:`parse_cli`, :meth:`override`,
+    :meth:`resolve_defaults`, :meth:`ask_user`) each return a new
+    Runner (immutable copies), so you can branch for sweeps::
+
+        base = runner.parse_cli()
+        base.override(seed=42).run()
+        base.override(seed=99).run()
+
+    :meth:`run` auto-calls any unapplied pipeline steps.
+
+    Args:
+        command: Shell command to run (str is split via shlex).
+        params: CLI parameters declared via :class:`Param`.
+        outputs: Extra output files declared via :class:`Output`.
+        metrics: Regex patterns to extract from stdout via :class:`Metric`.
+        tags: W&B run tags.
+        env: Extra environment variables for the subprocess.
+        wandb_project: W&B project name (default: git repo name).
+        group: W&B run group for sweeps.
+    """
+
     command: str | list[str]
     params: list[Param] = field(default_factory=list)
     outputs: list[Output] = field(default_factory=list)
@@ -270,7 +297,19 @@ class Runner:
         no_wandb: bool | None = None,
         run_name: str | None = None,
     ) -> None:
-        """Execute the full run lifecycle."""
+        """Execute the full run lifecycle.
+
+        Auto-calls :meth:`parse_cli`, :meth:`resolve_defaults`, and
+        :meth:`ask_user` for any steps not yet applied.
+
+        Keyword args override CLI flags (with warnings on contradiction):
+
+        Args:
+            dry_run: Print the command and exit without running.
+            interactive: Prompt for missing params (default True).
+            no_wandb: Skip W&B logging (still logs to JSON).
+            run_name: Override the W&B run name.
+        """
         r = self
         if not r._cli_parsed:
             r = r.parse_cli()
@@ -421,6 +460,10 @@ class Runner:
         *,
         aborted: bool = False,
     ) -> None:
+        """Run post-execution steps (metrics, file uploads, code snapshot).
+
+        Each step is individually try-excepted so backends always finish.
+        """
         if aborted:
             status = "aborted"
         elif exit_code == 0:
@@ -489,6 +532,13 @@ class Runner:
     def _parse_cli_args(
         self, argv: list[str] | None = None
     ) -> tuple[dict, _RunFlags, set[str]]:
+        """Parse argv into (param_values, run_flags, explicit_flags).
+
+        Returns a tuple of:
+        - param values dict (name -> value, None for unset)
+        - _RunFlags with built-in flag values
+        - set of flag names explicitly passed on CLI (for contradiction warnings)
+        """
         parser = argparse.ArgumentParser(
             description="genai_runner experiment launcher",
             formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -723,6 +773,7 @@ class Runner:
         return str(val) == str(default)
 
     def _build_command(self, param_values: dict) -> list[str]:
+        """Build the subprocess argv from command + resolved param values."""
         cmd = list(self.command)
         for p in self.params:
             val = param_values.get(p.name)
@@ -746,6 +797,10 @@ class Runner:
     def _execute(
         self, cmd: list[str], output_dir: Path
     ) -> tuple[int, float, str, bool]:
+        """Run subprocess, stream stdout/stderr to terminal and log files.
+
+        Returns (exit_code, duration_seconds, stdout_text, aborted).
+        """
         stdout_lines: list[str] = []
         lock = threading.Lock()
 
