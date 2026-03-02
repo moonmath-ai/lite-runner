@@ -374,13 +374,7 @@ class Runner:
         if wb_backend is not None:
             config["wandb/name"] = run_name
             config["wandb/url"] = run_url
-            wb_backend.update_config(
-                {
-                    "meta/output_dir": str(output_dir),
-                    "wandb/name": run_name,
-                    "wandb/url": run_url,
-                }
-            )
+            wb_backend.update_config({"meta/output_dir": str(output_dir)})
 
         # Dry run: print summary and return (no dirs, no execution)
         if flags.dry_run:
@@ -400,7 +394,6 @@ class Runner:
         # Create output dir
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"Output dir: {output_dir}")
-        print(f"W&B run: {run_url}")
 
         # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
