@@ -123,7 +123,7 @@ Last match wins. Stored in `wandb.run.summary`.
 
 ## Sweeps
 
-Loop with overrides. Runs are grouped in W&B for easy comparison:
+Loop with `override()`. Runs are grouped in W&B for easy comparison:
 
 ```python
 runner = Runner(
@@ -132,10 +132,16 @@ runner = Runner(
     group="lr-sweep",           # groups all runs together in W&B UI
 )
 for lr in [1e-3, 1e-4, 1e-5]:
-    runner.run(overrides={"learning_rate": lr})
+    runner.override(learning_rate=lr).run(interactive=False)
 ```
 
 Each call creates a separate W&B run, all grouped under the same `group`.
+
+You can also update metadata per-run:
+
+```python
+runner.override(seed=42).with_metadata(tags=["baseline"]).run()
+```
 
 ## Runner options
 
@@ -152,12 +158,38 @@ Runner(
 )
 ```
 
+## Pipeline API
+
+Each method returns a new `Runner` (immutable copies), so you can branch:
+
+```python
+base = runner.parse_cli()                     # parse sys.argv
+r1 = base.override(seed=42)                   # override params by name
+r2 = base.override(seed=99)
+r1.run()                                      # auto-resolves defaults & prompts
+r2.run()
+```
+
+Methods:
+
+| Method | Description |
+|--------|-------------|
+| `parse_cli(argv)` | Parse CLI args (default: `sys.argv[1:]`) |
+| `override(**kwargs)` | Set param values by name |
+| `with_metadata(project=, group=, tags=)` | Update W&B metadata |
+| `resolve_defaults()` | Apply defaults and fixed values |
+| `ask_user(interactive=)` | Prompt for missing values |
+| `run(...)` | Auto-calls any unapplied steps, then executes |
+
+`run()` accepts kwargs `dry_run`, `interactive`, `no_wandb`, `run_name` as alternatives to CLI flags.
+
 ## Built-in CLI flags
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print command and exit |
 | `--no-interactive` | Fail if required params missing |
+| `--no-wandb` | Skip W&B logging (still logs to JSON) |
 | `--run-name NAME` | Override W&B run name |
 | `--wandb-project NAME` | Override W&B project |
 

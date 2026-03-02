@@ -17,30 +17,38 @@ Python >=3.11 required. Build backend is hatchling.
 
 ## Architecture
 
-Single-package library (`src/genai_runner/__init__.py`, ~960 lines) with four core abstractions:
+Three modules under `src/genai_runner/`:
+
+- **`params.py`** — Data classes and type system: `Param`, `Output`, `Metric`, `_RunFlags`, type constants, `UNSET` sentinel.
+- **`backends.py`** — `LogBackend` protocol, `WandbBackend`, `JsonBackend`.
+- **`runner.py`** — `Runner` orchestrator and module-level helpers.
+- **`__init__.py`** — Re-exports the public API.
+
+Four core abstractions:
 
 - **`Param`** — Declares a CLI parameter.
   Type string encodes both parsing and W&B upload intent (e.g. `"path-video"` means file path that gets uploaded as video).
   Multi-value via `type=[...]`.
-  Values resolve through a priority chain: CLI args > `overrides` > callable defaults > fixed `value=`.
 - **`Output`** — Declares output files not tied to a Param (glob patterns, directories, zips).
   Processed after subprocess completes.
 - **`Metric`** — Regex pattern applied to stdout; last match wins.
   Stored in `wandb.run.summary`.
-- **`Runner`** — Orchestrator.
-  Parses CLI, prompts for missing values (via `questionary`),
-  inits W&B, creates output dir,
-  runs subprocess with stdout/stderr threading, then does post-run logging (metrics, files, code snapshot).
+- **`Runner`** — Orchestrator with an immutable pipeline API.
+  Each pipeline method returns a new Runner via `copy.copy`:
+  `parse_cli()` → `override()` → `resolve_defaults()` → `ask_user()`.
+  `run()` auto-calls any steps not yet applied.
+  Values are tracked in `_param_values` with source tags in `_param_sources`
+  (`"cli"`, `"override"`, `"default"`, `"fixed"`, `"prompt"`).
   Post-run steps are individually try-excepted so W&B always finishes.
 
 `$output` is a placeholder interpolated to `~/genai_runs/<project>/<timestamp>_<run_name>/` at runtime.
 
-The `_UNSET` sentinel marks params the user explicitly skipped (typed `-` at prompt) — these are omitted from the built command.
+The `UNSET` sentinel marks params the user explicitly skipped (typed `-` at prompt) — these are omitted from the built command.
 
 ## Key Design Decisions
 
 - **Decoupled from models**: User writes a `run.py` per model that configures a `Runner`. The runner only knows about CLI wrapping, not model internals.
-- **Interactive-first**: Missing params trigger TUI prompts by default; `--no-interactive` for CI/sweeps.
+- **Interactive-first**: Missing params trigger TUI prompts by default; `--no-interactive` or `run(interactive=False)` for CI/sweeps.
 - **Never-fail post-run**: Each post-run step catches exceptions and warns, ensuring W&B run always completes.
 
 ## Testing
