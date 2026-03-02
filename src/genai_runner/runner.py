@@ -468,7 +468,6 @@ class Runner:
             "exit_code": exit_code,
             "duration_seconds": duration,
             "status": status,
-            "output_dir": str(output_dir),
         }
 
         steps: list[tuple[str, object]] = [
