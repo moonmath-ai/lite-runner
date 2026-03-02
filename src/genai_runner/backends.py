@@ -77,7 +77,6 @@ class WandbBackend:
             tags=tags,
             save_code=True,
             config=config,
-            settings=wandb.Settings(summary_warnings=0),
         )
 
     def update_config(self, updates: dict) -> None:
