@@ -57,6 +57,7 @@ class Runner:
         self._resolved_params: dict | None = None
         self._overrides: dict | None = None
         self._filled: bool = False
+        self._backends: list[LogBackend] = []
 
     # -------------------------------------------------------------------
     # Helpers: merge overrides and check completeness
@@ -260,7 +261,7 @@ class Runner:
         json_backend.init(project, run_name, self.group, self.tags, config)
 
         # Assemble backends
-        self._backends: list[LogBackend] = [json_backend]
+        self._backends = [json_backend]
         if wb_backend is not None:
             self._backends.append(wb_backend)
 
