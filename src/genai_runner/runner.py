@@ -53,135 +53,246 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        self.parsed_params, self.runner_flags = self._parse_cli_args()
-        self._resolved_params: dict | None = None
-        self._overrides: dict | None = None
+        self._param_values: dict[str, object] = {}
+        self._param_sources: dict[str, str] = {}
+        self._run_flags: _RunFlags | None = None
+        self._cli_explicit_flags: set[str] = set()
+        self._cli_parsed: bool = False
+        self._defaults_resolved: bool = False
         self._filled: bool = False
         self._backends: list[LogBackend] = []
 
     # -------------------------------------------------------------------
-    # Helpers: merge overrides and check completeness
+    # Public param pipeline
     # -------------------------------------------------------------------
 
-    def _merge_overrides(
-        self,
-        overrides: dict[str, object] | None,
-        kwargs: dict[str, object],
-    ) -> dict[str, object]:
-        """Merge previous overrides, new overrides dict, and kwargs.
+    def parse_cli(self, argv: list[str] | None = None) -> Runner:
+        """Parse CLI arguments and return a new Runner with values applied.
 
-        Carries forward overrides from a previous resolve/override call,
-        maps underscore kwargs to param names, and validates keys.
+        Args:
+            argv: Command-line arguments to parse.  ``None`` means
+                ``sys.argv[1:]``.
         """
-        merged: dict[str, object] = {}
-        if self._overrides is not None:
-            merged.update(self._overrides)
-        merged.update(overrides or {})
-        name_by_dest = {p.dest: p.name for p in self.params}
-        for k, v in kwargs.items():
-            merged[name_by_dest.get(k, k)] = v
-
-        valid_names = {p.name for p in self.params}
-        unknown = set(merged) - valid_names
-        if unknown:
-            msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
-            raise ValueError(msg)
-        return merged
-
-    def _check_complete(self, resolved: dict) -> None:
-        """Raise ValueError if any required params are still None."""
-        missing = [
-            p.name
-            for p in self.params
-            if not p.is_fixed and p.type != "bool" and resolved.get(p.name) is None
-        ]
-        if missing:
-            msg = f"Missing required param(s): {', '.join(missing)}"
-            raise ValueError(msg)
-
-    # -------------------------------------------------------------------
-    # Public param pipeline: resolve → fill
-    # -------------------------------------------------------------------
-
-    def resolve(
-        self, overrides: dict[str, object] | None = None, **kwargs: object
-    ) -> Runner:
-        """Return a copy with overrides merged and params resolved.
-
-        Priority chain: overrides > CLI args > callable defaults > fixed.
-        Does NOT check completeness — missing params are OK at this stage.
-        """
-        merged = self._merge_overrides(overrides, kwargs)
-        resolved = self._resolve_params(self.parsed_params, merged)
+        parsed_params, run_flags, explicit_flags = self._parse_cli_args(argv)
 
         new = copy.copy(self)
-        new._resolved_params = resolved
-        new._overrides = merged
+        new._param_values = dict(self._param_values)
+        new._param_sources = dict(self._param_sources)
+
+        for name, val in parsed_params.items():
+            if val is not None and new._param_sources.get(name) != "override":
+                new._param_values[name] = val
+                new._param_sources[name] = "cli"
+
+        new._run_flags = run_flags
+        new._cli_explicit_flags = explicit_flags
+        new._cli_parsed = True
+        new._defaults_resolved = False
         new._filled = False
         return new
 
-    def fill(self) -> Runner:
-        """Return a copy with missing params filled via interactive prompts.
-
-        In non-interactive mode, raises SystemExit if required params
-        are missing.  Must be called after resolve().
-        """
-        if self._resolved_params is None:
-            msg = "fill() requires resolve() first"
-            raise ValueError(msg)
-
-        filled = self._prompt_params(
-            self._resolved_params,
-            self.parsed_params,
-            self._overrides or {},
-            interactive=self.runner_flags.interactive,
-        )
-
-        new = copy.copy(self)
-        new._resolved_params = filled
-        new._overrides = self._overrides
-        new._filled = True
-        return new
-
-    def override(
-        self, overrides: dict[str, object] | None = None, **kwargs: object
-    ) -> Runner:
-        """Return a copy with overrides pre-resolved and validated complete.
-
-        Convenience method: resolve() + completeness check in one call.
-        All params must be determined (via overrides, CLI, or defaults);
-        raises ValueError if any required param is still missing.
+    def override(self, **kwargs: object) -> Runner:
+        """Return a copy with override values applied.
 
         Example::
 
             r1 = runner.override(seed=42, prompt="a cat")
             r2 = runner.override(seed=99, prompt="a dog")
-            # both validated ^^
             r1.run()
             r2.run()
         """
-        r = self.resolve(overrides, **kwargs)
-        self._check_complete(r._resolved_params)
-        r._filled = True
-        return r
+        name_by_dest = {p.dest: p.name for p in self.params}
+        valid_names = {p.name for p in self.params}
 
-    def run(self) -> None:
-        """Execute the full run lifecycle."""
-        runner_flags = self.runner_flags
+        resolved: dict[str, object] = {}
+        for k, v in kwargs.items():
+            resolved[name_by_dest.get(k, k)] = v
 
+        unknown = set(resolved) - valid_names
+        if unknown:
+            msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
+            raise ValueError(msg)
+
+        new = copy.copy(self)
+        new._param_values = dict(self._param_values)
+        new._param_sources = dict(self._param_sources)
+        new._param_values.update(resolved)
+        for name in resolved:
+            new._param_sources[name] = "override"
+        return new
+
+    def with_metadata(
+        self,
+        *,
+        project: str | None = None,
+        group: str | None = None,
+        tags: list[str] | None = None,
+    ) -> Runner:
+        """Return a copy with updated project, group, or tags."""
+        new = copy.copy(self)
+        if project is not None:
+            new.wandb_project = project
+        if group is not None:
+            new.group = group
+        if tags is not None:
+            new.tags = list(tags)
+        return new
+
+    def resolve_defaults(self) -> Runner:
+        """Return a copy with defaults and fixed values applied.
+
+        Params already set (by CLI or override) are not changed.
+        """
+        new = copy.copy(self)
+        new._param_values = dict(self._param_values)
+        new._param_sources = dict(self._param_sources)
+
+        for p in self.params:
+            if p.name in new._param_values:
+                continue
+            if p.is_fixed:
+                new._param_values[p.name] = p.value() if callable(p.value) else p.value
+                new._param_sources[p.name] = "fixed"
+            elif p.type == "bool":
+                new._param_values[p.name] = False
+                new._param_sources[p.name] = "default"
+            elif p.default is not None:
+                new._param_values[p.name] = (
+                    p.default() if callable(p.default) else p.default
+                )
+                new._param_sources[p.name] = "default"
+
+        # Cast multi-value args to per-element types
+        for p in self.params:
+            val = new._param_values.get(p.name)
+            if p.nargs is not None and val is not None and val is not UNSET:
+                new._param_values[p.name] = _cast_nargs(val, p.type_list)
+
+        new._defaults_resolved = True
+        return new
+
+    def ask_user(self, *, interactive: bool | None = None) -> Runner:
+        """Return a copy with missing params filled via interactive prompts.
+
+        In non-interactive mode, raises SystemExit if required params
+        are missing.  Auto-calls :meth:`resolve_defaults` if needed.
+        """
         r = self
-        if r._resolved_params is None:
-            r = r.resolve()
+        if not r._defaults_resolved:
+            r = r.resolve_defaults()
+
+        if interactive is None:
+            interactive = r._run_flags.interactive if r._run_flags else True
+
+        new = copy.copy(r)
+        new._param_values = dict(r._param_values)
+        new._param_sources = dict(r._param_sources)
+
+        # Params eligible for prompting: non-fixed, non-bool,
+        # not explicitly set via CLI or overrides
+        promptable = [
+            p
+            for p in self.params
+            if not p.is_fixed
+            and p.prompt
+            and p.type != "bool"
+            and r._param_sources.get(p.name) not in ("cli", "override")
+        ]
+
+        missing = [p for p in promptable if p.name not in r._param_values]
+
+        if not interactive:
+            if missing:
+                names = [p.name for p in missing]
+                print(
+                    f"Error: missing required params: {', '.join(names)}",
+                    file=sys.stderr,
+                )
+                print(
+                    "Run without -n for interactive mode,"
+                    " or pass them on the command line.",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            new._filled = True
+            return new
+
+        for p in promptable:
+            default = new._param_values.get(p.name)
+            if p.nargs is not None:
+                val = self._prompt_nargs(p, default=default)
+            else:
+                val = self._prompt_single(p, default=default)
+            new._param_values[p.name] = val
+            new._param_sources[p.name] = "prompt"
+
+        new._filled = True
+        return new
+
+    def _merge_run_flags(
+        self,
+        *,
+        dry_run: bool | None = None,
+        interactive: bool | None = None,
+        no_wandb: bool | None = None,
+        run_name: str | None = None,
+    ) -> _RunFlags:
+        """Merge run() kwargs with CLI flags, warning on contradictions."""
+        from dataclasses import replace as _replace
+
+        base = self._run_flags or _RunFlags()
+        updates: dict[str, object] = {}
+        for field_name, value in [
+            ("dry_run", dry_run),
+            ("interactive", interactive),
+            ("no_wandb", no_wandb),
+            ("run_name", run_name),
+        ]:
+            if value is None:
+                continue
+            if field_name in self._cli_explicit_flags:
+                cli_val = getattr(base, field_name)
+                if cli_val != value:
+                    print(
+                        f"[genai_runner] Warning: run({field_name}={value!r})"
+                        f" overrides CLI flag (was {cli_val!r})",
+                        file=sys.stderr,
+                    )
+            updates[field_name] = value
+
+        return _replace(base, **updates) if updates else base
+
+    def run(
+        self,
+        *,
+        dry_run: bool | None = None,
+        interactive: bool | None = None,
+        no_wandb: bool | None = None,
+        run_name: str | None = None,
+    ) -> None:
+        """Execute the full run lifecycle."""
+        r = self
+        if not r._cli_parsed:
+            r = r.parse_cli()
+
+        flags = r._merge_run_flags(
+            dry_run=dry_run,
+            interactive=interactive,
+            no_wandb=no_wandb,
+            run_name=run_name,
+        )
+
+        if not r._defaults_resolved:
+            r = r.resolve_defaults()
         if not r._filled:
-            r = r.fill()
-        resolved_params = r._resolved_params
-        overrides_dict = r._overrides or {}
+            r = r.ask_user(interactive=flags.interactive)
+
+        param_values = r._param_values
+        param_sources = r._param_sources
 
         # Git info and project
         git_info = _collect_git_info()
-        project = (
-            runner_flags.wandb_project or self.wandb_project or git_info.get("repo")
-        )
+        project = flags.wandb_project or r.wandb_project or git_info.get("repo")
         if project is None:
             msg = (
                 "Cannot determine project name:"
@@ -191,29 +302,27 @@ class Runner:
 
         # Config
         config: dict[str, object] = {}
-        for k, v in resolved_params.items():
+        for k, v in param_values.items():
             config[f"param/{k}"] = "<unset>" if v is UNSET else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
         timestamp = datetime.datetime.now(tz=datetime.UTC)
         config["meta/hostname"] = os.uname().nodename
         config["meta/datetime"] = timestamp.isoformat()
-        config["meta/command"] = shlex.join(self.command)
+        config["meta/command"] = shlex.join(r.command)
 
         # Init WandbBackend first (needs to happen early to get run_name)
         wb_backend = None
-        if not runner_flags.dry_run and not runner_flags.no_wandb:
+        if not flags.dry_run and not flags.no_wandb:
             wb_backend = WandbBackend()
-            wb_backend.init(
-                project, runner_flags.run_name, self.group, self.tags, config
-            )
+            wb_backend.init(project, flags.run_name, r.group, r.tags, config)
             run_name = wb_backend.run_name
             run_url = wb_backend.run_url
-        elif runner_flags.dry_run:
-            run_name = runner_flags.run_name or "run"
+        elif flags.dry_run:
+            run_name = flags.run_name or "run"
             run_url = "(dry run)"
         else:
-            run_name = runner_flags.run_name or "local"
+            run_name = flags.run_name or "local"
             run_url = "(W&B disabled)"
 
         # Output dir
@@ -235,20 +344,18 @@ class Runner:
             )
 
         # Dry run: print summary and return (no dirs, no execution)
-        if runner_flags.dry_run:
+        if flags.dry_run:
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Run name: {run_name}")
-            print(f"[dry-run] Group: {self.group}")
-            print(f"[dry-run] Tags: {self.tags}")
+            print(f"[dry-run] Group: {r.group}")
+            print(f"[dry-run] Tags: {r.tags}")
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
-            interpolated_params = self._interpolate_output(resolved_params, output_dir)
-            colored_cmd = self._format_command(
-                interpolated_params, self.parsed_params, overrides_dict
-            )
+            interpolated_params = r._interpolate_output(param_values, output_dir)
+            colored_cmd = r._format_command(interpolated_params, param_sources)
             print(f"Output dir: {output_dir}")
             print(f"Command:\n{colored_cmd}")
             # Show what files would be logged
-            self._print_file_plan(interpolated_params)
+            r._print_file_plan(interpolated_params)
             return
 
         # Create output dir
@@ -258,50 +365,48 @@ class Runner:
 
         # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
-        json_backend.init(project, run_name, self.group, self.tags, config)
+        json_backend.init(project, run_name, r.group, r.tags, config)
 
         # Assemble backends
-        self._backends = [json_backend]
+        r._backends = [json_backend]
         if wb_backend is not None:
-            self._backends.append(wb_backend)
+            r._backends.append(wb_backend)
 
         # Save code snapshot (git archive + dirty diff)
         try:
-            _log_code_snapshot(self._backends, output_dir, git_info)
+            _log_code_snapshot(r._backends, output_dir, git_info)
         except Exception as e:  # noqa: BLE001
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
         # Interpolate $output in param values
-        interpolated_params = self._interpolate_output(resolved_params, output_dir)
+        interpolated_params = r._interpolate_output(param_values, output_dir)
 
         # Log table params (prompt, etc.)
-        self._log_table_params(resolved_params)
+        r._log_table_params(param_values)
 
         # Log input files (log_when == "before")
-        self._log_files(interpolated_params, when="before")
+        r._log_files(interpolated_params, when="before")
 
         # Build command
-        cmd = self._build_command(interpolated_params)
-        for b in self._backends:
+        cmd = r._build_command(interpolated_params)
+        for b in r._backends:
             b.update_config({"meta/full_command": shlex.join(cmd)})
-        colored_cmd = self._format_command(
-            interpolated_params, self.parsed_params, overrides_dict
-        )
+        colored_cmd = r._format_command(interpolated_params, param_sources)
         print(f"Command:\n{colored_cmd}")
 
         # Execute
         print("=" * 60)
-        exit_code, duration, stdout_text, aborted = self._execute(cmd, output_dir)
+        exit_code, duration, stdout_text, aborted = r._execute(cmd, output_dir)
         print("=" * 60)
 
         # Post-run: never raise, always try to finish backends
-        self._post_run(
+        r._post_run(
             interpolated_params,
             output_dir,
             exit_code,
             duration,
             stdout_text,
-            self.tags,
+            r.tags,
             aborted=aborted,
         )
 
@@ -381,18 +486,24 @@ class Runner:
     # CLI parsing
     # -----------------------------------------------------------------------
 
-    def _parse_cli_args(self) -> tuple[dict, _RunFlags]:
+    def _parse_cli_args(
+        self, argv: list[str] | None = None
+    ) -> tuple[dict, _RunFlags, set[str]]:
         parser = argparse.ArgumentParser(
             description="genai_runner experiment launcher",
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
-        # Built-in flags
+        # Built-in flags — default=None so we can detect explicit usage
         parser.add_argument(
-            "--dry-run", action="store_true", help="Print command and exit"
+            "--dry-run",
+            action="store_true",
+            default=None,
+            help="Print command and exit",
         )
         parser.add_argument(
             "--no-interactive",
             action="store_true",
+            default=None,
             help="Non-interactive mode; fail if required params are missing",
         )
         parser.add_argument("--run-name", default=None, help="Override W&B run name")
@@ -404,100 +515,47 @@ class Runner:
         parser.add_argument(
             "--no-wandb",
             action="store_true",
+            default=None,
             help="Skip W&B logging; still execute command and save outputs locally",
         )
 
         for p in self.params:
             if not p.is_fixed:
-                parser.add_argument(p.flag, **p._argparse_kwargs())
+                kw = p._argparse_kwargs()
+                if p.type == "bool":
+                    kw["default"] = None
+                parser.add_argument(p.flag, **kw)
 
-        ns = parser.parse_args()
+        ns = parser.parse_args(argv)
         parsed_params = {
             p.name: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
         }
-        runner_flags = _RunFlags(
-            dry_run=ns.dry_run,
-            interactive=not ns.no_interactive,
-            no_wandb=ns.no_wandb,
+
+        # Track which run flags were explicitly set on CLI
+        explicit_flags: set[str] = set()
+        if ns.dry_run is not None:
+            explicit_flags.add("dry_run")
+        if ns.no_interactive is not None:
+            explicit_flags.add("interactive")
+        if ns.no_wandb is not None:
+            explicit_flags.add("no_wandb")
+        if ns.run_name is not None:
+            explicit_flags.add("run_name")
+        if ns.wandb_project is not None:
+            explicit_flags.add("wandb_project")
+
+        run_flags = _RunFlags(
+            dry_run=bool(ns.dry_run),
+            interactive=not bool(ns.no_interactive),
+            no_wandb=bool(ns.no_wandb),
             run_name=ns.run_name,
             wandb_project=ns.wandb_project,
         )
-        return parsed_params, runner_flags
+        return parsed_params, run_flags, explicit_flags
 
     # -----------------------------------------------------------------------
-    # Resolve values: apply overrides and callable defaults
+    # Interactive prompts (internal helpers)
     # -----------------------------------------------------------------------
-
-    def _resolve_params(self, parsed_params: dict, overrides: dict) -> dict:
-        resolved_params = dict(parsed_params)
-        for p in self.params:
-            if p.name in overrides:
-                resolved_params[p.name] = overrides[p.name]
-            elif p.is_fixed:
-                resolved_params[p.name] = p.value() if callable(p.value) else p.value
-            elif resolved_params.get(p.name) is None and p.default is not None:
-                resolved_params[p.name] = (
-                    p.default() if callable(p.default) else p.default
-                )
-            # Cast multi-value args to per-element types
-            val = resolved_params.get(p.name)
-            if p.nargs is not None and val is not None and val is not UNSET:
-                resolved_params[p.name] = _cast_nargs(
-                    resolved_params[p.name], p.type_list
-                )
-        return resolved_params
-
-    # -----------------------------------------------------------------------
-    # Interactive prompts
-    # -----------------------------------------------------------------------
-
-    def _prompt_params(
-        self,
-        resolved_params: dict,
-        parsed_params: dict,
-        overrides: dict,
-        *,
-        interactive: bool,
-    ) -> dict:
-        resolved_params = dict(resolved_params)
-
-        # Params eligible for prompting: non-fixed, non-bool,
-        # not explicitly set via CLI or overrides
-        promptable = [
-            p
-            for p in self.params
-            if not p.is_fixed
-            and p.prompt
-            and p.type != "bool"
-            and p.name not in overrides
-            and parsed_params.get(p.name) is None
-        ]
-
-        missing = [p for p in promptable if resolved_params.get(p.name) is None]
-
-        if not interactive:
-            if missing:
-                names = [p.name for p in missing]
-                print(
-                    f"Error: missing required params: {', '.join(names)}",
-                    file=sys.stderr,
-                )
-                print(
-                    "Run without -n for interactive mode,"
-                    " or pass them on the command line.",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
-            return resolved_params
-
-        for p in promptable:
-            default = resolved_params.get(p.name)
-            if p.nargs is not None:
-                resolved_params[p.name] = self._prompt_nargs(p, default=default)
-            else:
-                resolved_params[p.name] = self._prompt_single(p, default=default)
-
-        return resolved_params
 
     def _prompt_single(
         self, p: Param, default: object = None
@@ -610,8 +668,7 @@ class Runner:
     def _format_command(
         self,
         param_values: dict,
-        parsed_params: dict,
-        overrides: dict,
+        param_sources: dict,
     ) -> str:
         """Build a colored command string for display."""
         _RST = "\033[0m"
@@ -619,8 +676,8 @@ class Runner:
         _COLORS = {
             "flag": "\033[31m",  # red — prompted, required
             "flag+default": "\033[32m",  # green — prompted, kept default
-            "cli": "\033[36m",  # cyan — from CLI, non-default value
-            "cli+default": "\033[34m",  # blue — from CLI, kept default
+            "cli": "\033[36m",  # cyan — from CLI/override, non-default value
+            "cli+default": "\033[34m",  # blue — from CLI/override, kept default
             "value": "\033[33m",  # yellow — fixed value=
             "no-prompt": "\033[35m",  # magenta — no-prompt, default used
         }
@@ -636,11 +693,12 @@ class Runner:
             if p.type == "bool" and not val:
                 continue
 
-            if p.is_fixed:
+            source = param_sources.get(p.name, "")
+            if source == "fixed":
                 kind = "value"
             elif not p.prompt:
                 kind = "no-prompt"
-            elif p.name in overrides or parsed_params.get(p.name) is not None:
+            elif source in ("cli", "override"):
                 kind = "cli+default" if self._is_default_value(p, val) else "cli"
             else:
                 kind = "flag+default" if self._is_default_value(p, val) else "flag"
