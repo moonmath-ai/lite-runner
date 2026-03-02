@@ -78,7 +78,7 @@ class Param:
         log_when: "before" (input file) or "after" (output file).
             Auto-inferred from $output in value when type encodes
             upload intent (path-image, path-video, etc.).
-        hidden: If True, skip interactive prompting and use the
+        prompt: If False, skip interactive prompting and use the
             default value.  The param still accepts CLI flags and
             is logged normally.  Requires a default.
         table: If True, log the resolved value in a W&B Table for
@@ -95,7 +95,7 @@ class Param:
     value: Any = None
     labels: list[str] | None = None
     log_when: str | None = None
-    hidden: bool = False
+    prompt: bool = True
     table: bool = False
 
     def __post_init__(self) -> None:
@@ -112,8 +112,8 @@ class Param:
             if t != "bool" and t not in _PARAM_TYPE_MAP:
                 msg = f"Unknown param type '{t}' for param '{self.name}'"
                 raise ValueError(msg)
-        if self.hidden and self.default is None:
-            msg = f"Param('{self.name}', hidden=True) requires a default"
+        if not self.prompt and self.default is None:
+            msg = f"Param('{self.name}', prompt=False) requires a default"
             raise ValueError(msg)
         if self.type == "bool" and self.default not in (None, False):
             print(

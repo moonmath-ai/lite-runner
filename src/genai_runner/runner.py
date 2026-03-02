@@ -466,7 +466,7 @@ class Runner:
             p
             for p in self.params
             if not p.is_fixed
-            and not p.hidden
+            and p.prompt
             and p.type != "bool"
             and p.name not in overrides
             and parsed_params.get(p.name) is None
@@ -621,7 +621,7 @@ class Runner:
             "cli": "\033[36m",  # cyan — from CLI, non-default value
             "cli+default": "\033[34m",  # blue — from CLI, kept default
             "value": "\033[33m",  # yellow — fixed value=
-            "hidden": "\033[35m",  # magenta — hidden, default used
+            "no-prompt": "\033[35m",  # magenta — no-prompt, default used
         }
 
         parts = [shlex.join(self.command)]
@@ -637,8 +637,8 @@ class Runner:
 
             if p.is_fixed:
                 kind = "value"
-            elif p.hidden:
-                kind = "hidden"
+            elif not p.prompt:
+                kind = "no-prompt"
             elif p.name in overrides or parsed_params.get(p.name) is not None:
                 kind = "cli+default" if self._is_default_value(p, val) else "cli"
             else:
