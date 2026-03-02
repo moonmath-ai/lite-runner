@@ -84,7 +84,8 @@ class WandbBackend:
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         if log_as == "video":
-            self._run.log({key: self._wandb.Video(str(path))})
+            fmt = path.suffix.lstrip(".")
+            self._run.log({key: self._wandb.Video(str(path), format=fmt)})
         elif log_as == "image":
             self._run.log({key: self._wandb.Image(str(path))})
         elif log_as == "text":
