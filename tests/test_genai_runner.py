@@ -952,6 +952,23 @@ def test_execute_env_vars_passed(tmp_path):
     assert "hello123" in stdout_text
 
 
+def test_execute_env_none_removes_var(tmp_path):
+    runner = Runner(command="echo", env={"FOO": "bar", "PATH": None})
+    cmd = [
+        sys.executable,
+        "-c",
+        "import os,json; print(json.dumps("
+        "{'FOO':os.environ.get('FOO'),'PATH':os.environ.get('PATH')}))",
+    ]
+    exit_code, _, stdout_text, _ = runner._execute(cmd, tmp_path)
+    assert exit_code == 0
+    import json
+
+    result = json.loads(stdout_text.strip().splitlines()[-1])
+    assert result["FOO"] == "bar"
+    assert result["PATH"] is None
+
+
 # ---------------------------------------------------------------------------
 # run() kwargs and _merge_run_flags
 # ---------------------------------------------------------------------------

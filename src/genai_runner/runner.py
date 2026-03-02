@@ -74,7 +74,7 @@ class Runner:
     outputs: list[Output] = field(default_factory=list)
     metrics: list[Metric] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
-    env: dict[str, str] = field(default_factory=dict)
+    env: dict[str, str | None] = field(default_factory=dict)
     wandb_project: str | None = None
     group: str | None = None  # W&B run group for sweeps
 
@@ -827,6 +827,9 @@ class Runner:
             log_stderr = stack.enter_context((output_dir / "stderr.log").open("w"))
 
             run_env = {**os.environ, **self.env}
+            for k, v in self.env.items():
+                if v is None:
+                    run_env.pop(k, None)
             if "COLUMNS" not in run_env:
                 with suppress(OSError):
                     run_env["COLUMNS"] = str(os.get_terminal_size().columns)
