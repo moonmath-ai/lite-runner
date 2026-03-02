@@ -37,6 +37,7 @@ from .params import (
 )
 
 _RUNS_DIR = Path.home() / "genai_runs"
+_PREFIX = "\033[36mgenai-runner:\033[0m"
 
 
 @dataclass
@@ -385,15 +386,15 @@ class Runner:
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             interpolated_params = r._interpolate_output(param_values, output_dir)
             colored_cmd = r._format_command(interpolated_params, param_sources)
-            print(f"Output dir: {output_dir}")
-            print(f"Command:\n{colored_cmd}")
+            print(f"{_PREFIX} Output dir: {output_dir}")
+            print(f"{_PREFIX} Command:\n{colored_cmd}")
             # Show what files would be logged
             r._print_file_plan(interpolated_params)
             return
 
         # Create output dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Output dir: {output_dir}")
+        print(f"{_PREFIX} Output dir: {output_dir}")
 
         # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
@@ -424,7 +425,7 @@ class Runner:
         for b in r._backends:
             b.update_config({"meta/full_command": shlex.join(cmd)})
         colored_cmd = r._format_command(interpolated_params, param_sources)
-        print(f"Command:\n{colored_cmd}")
+        print(f"{_PREFIX} Command:\n{colored_cmd}")
 
         # Execute
         print("=" * 60)
@@ -514,9 +515,9 @@ class Runner:
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: finish {type(b).__name__} failed: {e}")
 
-        print(f"Status: {status} (exit code {exit_code})")
-        print(f"Duration: {duration:.1f}s")
-        print(f"Output dir: {output_dir}")
+        print(f"{_PREFIX} Status: {status} (exit code {exit_code})")
+        print(f"{_PREFIX} Duration: {duration:.1f}s")
+        print(f"{_PREFIX} Output dir: {output_dir}")
 
     # -----------------------------------------------------------------------
     # CLI parsing
