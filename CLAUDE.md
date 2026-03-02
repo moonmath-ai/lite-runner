@@ -55,3 +55,12 @@ The `UNSET` sentinel marks params the user explicitly skipped (typed `-` at prom
 
 Tests are in `tests/test_genai_runner.py`. W&B is mocked in integration tests.
 The test file covers: param validation, CLI parsing, value resolution, interactive prompts, command building, metric extraction, subprocess execution, output logging, and full run lifecycle.
+
+## Keeping docs in sync
+
+When changing the public API (Param fields, Runner methods, CLI flags), update:
+
+- **This file** (`CLAUDE.md`) — Architecture section above
+- **`README.md`** — Quick start, Param docs, Pipeline API, CLI flags table, Sweeps example
+- **`examples/`** — `run_example.py`, `run_sweep.py`, `run_ltx2.py` use the public API
+- **Docstrings** — `Runner` class docstring, `Param` class docstring, public method docstrings
