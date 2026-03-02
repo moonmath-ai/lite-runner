@@ -10,17 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from genai_runner import (
-    UNSET,
-    JsonBackend,
-    Metric,
-    Output,
-    Param,
-    Runner,
-    _collect_git_info,
-    _log_as_from_type,
-    _split_glob,
-)
+from genai_runner import UNSET, JsonBackend, Metric, Output, Param, Runner
+from genai_runner.params import _log_as_from_type
+from genai_runner.runner import _collect_git_info, _split_glob
 
 # ---------------------------------------------------------------------------
 # Helpers

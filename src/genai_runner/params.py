@@ -37,13 +37,6 @@ def _log_as_from_type(t: str) -> str | None:
     return None
 
 
-def _contains_output(val: object) -> bool:
-    """Check whether $output appears in a string or any element of a list."""
-    if isinstance(val, list):
-        return any("$output" in str(v) for v in val)
-    return "$output" in str(val)
-
-
 # Sentinel for params the user explicitly skipped (typed '-' at the prompt).
 _SKIP_INPUT = "-"
 
@@ -56,11 +49,6 @@ class _Unset:
 
 
 UNSET = _Unset()
-
-
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -139,7 +127,10 @@ class Param:
 
     def _value_contains_output(self) -> bool:
         """Check whether $output appears anywhere in self.value."""
-        return self.value is not None and _contains_output(self.value)
+        if self.value is None:
+            return False
+        values = self.value if isinstance(self.value, list) else [self.value]
+        return any("$output" in str(v) for v in values)
 
     @property
     def type_list(self) -> list[str]:

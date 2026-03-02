@@ -434,9 +434,7 @@ class Runner:
                 resolved_params[p.name] = overrides[p.name]
             elif p.is_fixed:
                 resolved_params[p.name] = p.value() if callable(p.value) else p.value
-            elif resolved_params.get(p.name) is not None:
-                pass
-            elif p.default is not None:
+            elif resolved_params.get(p.name) is None and p.default is not None:
                 resolved_params[p.name] = (
                     p.default() if callable(p.default) else p.default
                 )
@@ -599,11 +597,9 @@ class Runner:
             if val is None or val is UNSET or p.type == "bool":
                 continue
             if isinstance(val, list):
-                interpolated = [str(v).replace("$output", out) for v in val]
-                result[p.name] = interpolated
+                result[p.name] = [str(v).replace("$output", out) for v in val]
             else:
-                interpolated = str(val).replace("$output", out)
-                result[p.name] = interpolated
+                result[p.name] = str(val).replace("$output", out)
         return result
 
     # -----------------------------------------------------------------------
@@ -651,11 +647,9 @@ class Runner:
             color = _COLORS[kind]
             if p.type == "bool":
                 parts.append(f"{color}{p.flag}{_RST}")
-            elif isinstance(val, list):
-                val_str = " ".join(shlex.quote(str(v)) for v in val)
-                parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
             else:
-                val_str = shlex.quote(str(val))
+                values = val if isinstance(val, list) else [val]
+                val_str = " ".join(shlex.quote(str(v)) for v in values)
                 parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
         return " ".join(parts)
 
@@ -680,11 +674,10 @@ class Runner:
             if p.type == "bool":
                 if val:
                     cmd.append(p.flag)
-            elif isinstance(val, list):
-                cmd.append(p.flag)
-                cmd.extend(str(v) for v in val)
             else:
-                cmd.extend([p.flag, str(val)])
+                values = val if isinstance(val, list) else [val]
+                cmd.append(p.flag)
+                cmd.extend(str(v) for v in values)
         return cmd
 
     # -----------------------------------------------------------------------
@@ -792,7 +785,8 @@ class Runner:
             for b in self._backends:
                 b.log_table("params", ["name", "value"], rows)
 
-    # File logging to W&B
+    # -----------------------------------------------------------------------
+    # File logging
     # -----------------------------------------------------------------------
 
     def _log_files(self, param_values: dict, when: str) -> None:
@@ -863,13 +857,12 @@ class Runner:
                             b.log_file(m, o.log_as, key=label)
 
     def _log_run_logs(self, output_dir: Path) -> None:
-        existing_logs = [
-            output_dir / name
+        files = [
+            str(output_dir / name)
             for name in ("run.log", "stdout.log", "stderr.log")
             if (output_dir / name).exists()
         ]
-        if existing_logs:
-            files = [str(f) for f in existing_logs]
+        if files:
             for b in self._backends:
                 b.log_artifact("logs", "log", files)
 
@@ -878,19 +871,16 @@ class Runner:
     # -----------------------------------------------------------------------
 
     def _extract_metrics(self, stdout_text: str) -> None:
+        casters = {"float": float, "int": int}
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
             if not matches:
                 continue
             raw = matches[-1]  # last match wins
-            if m.type == "float":
+            caster = casters.get(m.type)
+            if caster is not None:
                 try:
-                    val = float(raw)
-                except ValueError:
-                    val = raw
-            elif m.type == "int":
-                try:
-                    val = int(raw)
+                    val = caster(raw)
                 except ValueError:
                     val = raw
             else:
