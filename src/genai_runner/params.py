@@ -150,10 +150,6 @@ class Param:
         """Params with a value= are never prompted or parsed from CLI."""
         return self.value is not None
 
-    @property
-    def needs_prompt(self) -> bool:
-        return not self.is_fixed and self.default is None
-
     def _argparse_kwargs(self) -> dict:
         """Build kwargs for argparse.add_argument."""
         kwargs: dict = {"dest": self.dest, "default": None, "help": self.help or None}

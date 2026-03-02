@@ -143,18 +143,6 @@ def test_param_is_fixed_without_value():
     assert Param("prompt").is_fixed is False
 
 
-def test_param_needs_prompt_no_default():
-    assert Param("prompt").needs_prompt is True
-
-
-def test_param_needs_prompt_with_default():
-    assert Param("seed", default=42).needs_prompt is False
-
-
-def test_param_needs_prompt_fixed():
-    assert Param("out", value="$output/x.mp4").needs_prompt is False
-
-
 def test_param_log_when_inferred_after():
     assert (
         Param("out", value="$output/video.mp4", type="path-video").log_when == "after"
