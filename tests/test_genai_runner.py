@@ -1394,6 +1394,7 @@ def test_no_wandb_failed_run(tmp_path):
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        pytest.raises(SystemExit, match="1"),
     ):
         runner.run(no_wandb=True, interactive=False)
 
