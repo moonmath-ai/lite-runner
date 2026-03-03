@@ -395,6 +395,16 @@ class Runner:
         # Create output dir
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"{_PREFIX} Output dir: {output_dir}")
+        gib = 1024 * 1024 * 1024
+        minimal_free_space = 1 * gib
+        if shutil.disk_usage(output_dir).free < minimal_free_space:
+            msg = (
+                "Not enough free space on device. Minimal free space:"
+                f" {minimal_free_space / gib:.2f} GiB. Available free space:"
+                f" {shutil.disk_usage(output_dir).free / gib:.2f} GiB"
+            )
+            print(f"{_PREFIX} Error: {msg}")
+            sys.exit(1)
 
         # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
