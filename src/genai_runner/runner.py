@@ -366,9 +366,12 @@ class Runner:
             run_url = "(W&B disabled)"
 
         # Output dir
-        output_dir = (
-            _RUNS_DIR / project / f"{timestamp.strftime('%Y%m%d_%H%M')}_{run_name}"
-        )
+        date_str = timestamp.strftime("%Y%m%d_%H%M")
+        if r.group:
+            dir_name = f"{date_str}_{r.group}_{run_name}"
+        else:
+            dir_name = f"{date_str}_{run_name}"
+        output_dir = _RUNS_DIR / project / dir_name
 
         # Augment config with output_dir and wandb info
         config["meta/output_dir"] = str(output_dir)
