@@ -442,6 +442,8 @@ class Runner:
             r.tags,
             aborted=aborted,
         )
+        if aborted:
+            sys.exit(1)
 
     def _post_run(
         self,
