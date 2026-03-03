@@ -452,7 +452,8 @@ class Runner:
             r.tags,
             aborted=aborted,
         )
-        if aborted:
+        if aborted or exit_code:
+            print("Aborting run due to aborted or failed exit code")
             sys.exit(1)
 
     def _post_run(
