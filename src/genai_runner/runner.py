@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime
+import gzip
+import tarfile
 import os
 import pprint
 import re
@@ -1091,7 +1093,7 @@ def _collect_git_info() -> dict:
             "repo": git("rev-parse", "--show-toplevel").rsplit("/", 1)[-1],
             "commit": git("rev-parse", "HEAD"),
             "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-            "dirty": git("status", "--porcelain") != "",
+            "dirty": git("status", "--porcelain", "--ignore-submodules=none") != "",
         }
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {}
@@ -1115,17 +1117,50 @@ def _log_code_snapshot(
             timeout=30,
         )
 
-    # git archive: full snapshot of tracked files at HEAD
+    # git archive: full snapshot of tracked files at HEAD (including submodules)
     archive_path = code_dir / "source.tar.gz"
-    result = git("archive", "--format=tar.gz", "-o", str(archive_path), "HEAD")
+    tar_path = code_dir / "source.tar"
+    result = git("archive", "--format=tar", "-o", str(tar_path), "HEAD")
     if result.returncode != 0:
         msg = f"git archive failed: {result.stderr.decode()}"
         raise RuntimeError(msg)
 
-    # Dirty diff (staged + unstaged vs HEAD)
+    # Archive each submodule and append into the tar
+    sub_result = git(
+        "submodule", "foreach", "--recursive", "--quiet",
+        "echo $displaypath",
+    )
+    if sub_result.returncode == 0 and sub_result.stdout.strip():
+        for sub_path in sub_result.stdout.decode().strip().splitlines():
+            sub_path = sub_path.strip()
+            if not sub_path:
+                continue
+            sub_tar = code_dir / "sub.tar"
+            r = git(
+                "-C", sub_path,
+                "archive", "--format=tar",
+                f"--prefix={sub_path}/",
+                "-o", str(sub_tar),
+                "HEAD",
+            )
+            if r.returncode == 0 and sub_tar.exists():
+                # Append submodule tar entries into main tar
+                with tarfile.open(tar_path, "a") as main_tf, \
+                     tarfile.open(sub_tar) as sub_tf:
+                    for member in sub_tf:
+                        main_tf.addfile(member, sub_tf.extractfile(member)
+                                        if member.isfile() else None)
+                sub_tar.unlink()
+
+    # Compress the combined tar
+    with open(tar_path, "rb") as f_in, gzip.open(archive_path, "wb") as f_out:
+        f_out.writelines(f_in)
+    tar_path.unlink()
+
+    # Dirty diff (staged + unstaged vs HEAD, including submodules)
     diff_path = None
     if git_info.get("dirty"):
-        diff_result = git("diff", "HEAD")
+        diff_result = git("diff", "HEAD", "--submodule=diff")
         if diff_result.returncode == 0 and diff_result.stdout:
             diff_path = code_dir / "dirty.patch"
             diff_path.write_bytes(diff_result.stdout)
