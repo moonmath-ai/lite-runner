@@ -6,7 +6,6 @@ import argparse
 import copy
 import datetime
 import gzip
-import tarfile
 import os
 import pprint
 import re
@@ -15,6 +14,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import zipfile
@@ -315,11 +315,15 @@ class Runner:
         """
         gib = 1024 * 1024 * 1024
         minimal_free_space = 1 * gib
-        if shutil.disk_usage(_RUNS_DIR).free < minimal_free_space:
+        # Find nearest existing ancestor for disk usage check
+        check_path = _RUNS_DIR
+        while not check_path.exists():
+            check_path = check_path.parent
+        if shutil.disk_usage(check_path).free < minimal_free_space:
             msg = (
                 "Not enough free space on device. Minimal free space:"
                 f" {minimal_free_space / gib:.2f} GiB. Available free space:"
-                f" {shutil.disk_usage(output_dir).free / gib:.2f} GiB"
+                f" {shutil.disk_usage(check_path).free / gib:.2f} GiB"
             )
             print(f"{_PREFIX} Error: {msg}")
             sys.exit(1)
@@ -1127,7 +1131,10 @@ def _log_code_snapshot(
 
     # Archive each submodule and append into the tar
     sub_result = git(
-        "submodule", "foreach", "--recursive", "--quiet",
+        "submodule",
+        "foreach",
+        "--recursive",
+        "--quiet",
         "echo $displaypath",
     )
     if sub_result.returncode == 0 and sub_result.stdout.strip():
@@ -1137,19 +1144,26 @@ def _log_code_snapshot(
                 continue
             sub_tar = code_dir / "sub.tar"
             r = git(
-                "-C", sub_path,
-                "archive", "--format=tar",
+                "-C",
+                sub_path,
+                "archive",
+                "--format=tar",
                 f"--prefix={sub_path}/",
-                "-o", str(sub_tar),
+                "-o",
+                str(sub_tar),
                 "HEAD",
             )
             if r.returncode == 0 and sub_tar.exists():
                 # Append submodule tar entries into main tar
-                with tarfile.open(tar_path, "a") as main_tf, \
-                     tarfile.open(sub_tar) as sub_tf:
+                with (
+                    tarfile.open(tar_path, "a") as main_tf,
+                    tarfile.open(sub_tar) as sub_tf,
+                ):
                     for member in sub_tf:
-                        main_tf.addfile(member, sub_tf.extractfile(member)
-                                        if member.isfile() else None)
+                        main_tf.addfile(
+                            member,
+                            sub_tf.extractfile(member) if member.isfile() else None,
+                        )
                 sub_tar.unlink()
 
     # Compress the combined tar
