@@ -97,9 +97,6 @@ class Runner:
     # Public param pipeline
     # -------------------------------------------------------------------
 
-    def copy(self) -> Self:
-        return copy.deepcopy(self)
-
     def get_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
             description="genai_runner experiment launcher",
@@ -140,6 +137,52 @@ class Runner:
                 parser.add_argument(param.flag, **param_kwargs)
 
         return parser
+
+    def copy(self) -> Self:
+        return copy.deepcopy(self)
+
+    def with_metadata(
+        self,
+        *,
+        project: str | None = None,
+        run_group: str | None = None,
+        tags: list[str] | None = None,
+    ) -> Runner:
+        """Return a copy with updated project, group, or tags."""
+        new = self.copy()
+        if project is not None:
+            new.project = project
+        if run_group is not None:
+            new.run_group = run_group
+        if tags is not None:
+            new.tags = tags
+        return new
+
+
+    def override(self, **kwargs: object) -> Runner:
+        """Return a copy with override values applied.
+
+        Example::
+
+            r1 = runner.override(seed=42, prompt="a cat")
+            r2 = runner.override(seed=99, prompt="a dog")
+            r1.run()
+            r2.run()
+        """
+        dest_to_name = {p.dest: p.name for p in self.params}
+        valid_param_names = set(dest_to_name.values())
+        override_params = {dest_to_name.get(k, k): v for k, v in kwargs.items()}
+
+        unknown = set(override_params) - valid_param_names
+        if unknown:
+            msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
+            raise ValueError(msg)
+
+        new = self.copy()
+        new.param_values.update(override_params)
+        for name in override_params:
+            new.param_sources[name] = "override"
+        return new
 
     def parse_cli(self, argv: list[str] | None = None) -> Self:
         """Parse CLI arguments and return a Runner with values applied.
@@ -192,48 +235,6 @@ class Runner:
         new.cli_parsed = True
         new.defaults_resolved = False
         new.filled = False
-        return new
-
-    def override(self, **kwargs: object) -> Runner:
-        """Return a copy with override values applied.
-
-        Example::
-
-            r1 = runner.override(seed=42, prompt="a cat")
-            r2 = runner.override(seed=99, prompt="a dog")
-            r1.run()
-            r2.run()
-        """
-        dest_to_name = {p.dest: p.name for p in self.params}
-        valid_param_names = set(dest_to_name.values())
-        override_params = {dest_to_name.get(k, k): v for k, v in kwargs.items()}
-
-        unknown = set(override_params) - valid_param_names
-        if unknown:
-            msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
-            raise ValueError(msg)
-
-        new = self.copy()
-        new.param_values.update(override_params)
-        for name in override_params:
-            new.param_sources[name] = "override"
-        return new
-
-    def with_metadata(
-        self,
-        *,
-        project: str | None = None,
-        run_group: str | None = None,
-        tags: list[str] | None = None,
-    ) -> Runner:
-        """Return a copy with updated project, group, or tags."""
-        new = self.copy()
-        if project is not None:
-            new.project = project
-        if run_group is not None:
-            new.run_group = run_group
-        if tags is not None:
-            new.tags = tags
         return new
 
     def resolve_defaults(self) -> Runner:
