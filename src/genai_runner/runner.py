@@ -19,7 +19,7 @@ import threading
 import time
 import zipfile
 from contextlib import ExitStack, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO, TextIO
 
@@ -268,8 +268,6 @@ class Runner:
         run_name: str | None = None,
     ) -> _RunFlags:
         """Merge run() kwargs with CLI flags, warning on contradictions."""
-        from dataclasses import replace as _replace
-
         base = self._run_flags or _RunFlags()
         updates: dict[str, object] = {}
         for field_name, value in [
@@ -290,7 +288,7 @@ class Runner:
                     )
             updates[field_name] = value
 
-        return _replace(base, **updates) if updates else base
+        return replace(base, **updates) if updates else base
 
     def run(
         self,
@@ -1167,7 +1165,7 @@ def _log_code_snapshot(
                 sub_tar.unlink()
 
     # Compress the combined tar
-    with open(tar_path, "rb") as f_in, gzip.open(archive_path, "wb") as f_out:
+    with tar_path.open("rb") as f_in, gzip.open(archive_path, "wb") as f_out:
         f_out.writelines(f_in)
     tar_path.unlink()
 
