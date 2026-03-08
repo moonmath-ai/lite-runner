@@ -6,6 +6,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import questionary
+
 ParamType = Literal[
     "str",
     "int",
@@ -169,6 +171,71 @@ class Param:
         if self.choices:
             kwargs["choices"] = self.choices
         return kwargs
+
+    def cast_nargs(self, values: list) -> list:
+        """Cast each element in *values* according to this param's type list."""
+        types = self.type_list
+        if len(values) != len(types):
+            msg = f"Expected {len(types)} values, got {len(values)}: {values}"
+            raise ValueError(msg)
+        return [
+            _PARAM_TYPE_MAP.get(t, str)(v)
+            for v, t in zip(values, types, strict=True)
+        ]
+
+    def ask(self, default: object = None) -> Any:
+        """Interactively prompt the user for this param's value."""
+        if self.nargs is not None:
+            return self._prompt_nargs(default)
+        return self._prompt_single(default)
+
+    def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
+        label = self.help or self.name
+        default_str = str(default) if default is not None else ""
+        if self.choices:
+            choices = [_SKIP_INPUT, *self.choices]
+            default_choice = str(default) if default is not None else None
+            answer = questionary.select(
+                f"{label}:", choices=choices, default=default_choice
+            ).ask()
+        elif isinstance(self.type, str) and self.type.startswith("path"):
+            answer = questionary.path(f"{label}:", default=default_str).ask()
+        else:
+            answer = questionary.text(f"{label}:", default=default_str).ask()
+
+        if answer is None:
+            print("Cancelled.", file=sys.stderr)
+            sys.exit(1)
+
+        if answer == _SKIP_INPUT:
+            return UNSET
+
+        caster = _PARAM_TYPE_MAP.get(self.type, str)
+        return caster(answer)
+
+    def _prompt_nargs(self, default: object = None) -> list | _Unset:
+        assert self.nargs is not None
+        labels = self.labels or [f"{self.name}[{i}]" for i in range(self.nargs)]
+        element_types = self.type_list
+        defaults = default if isinstance(default, list) else [None] * self.nargs
+        parts = []
+        for label, etype, d in zip(labels, element_types, defaults, strict=True):
+            default_str = str(d) if d is not None else ""
+            if etype.startswith("path"):
+                answer = questionary.path(
+                    f"{self.name} {label}:", default=default_str
+                ).ask()
+            else:
+                answer = questionary.text(
+                    f"{self.name} {label}:", default=default_str
+                ).ask()
+            if answer is None:
+                print("Cancelled.", file=sys.stderr)
+                sys.exit(1)
+            if answer == _SKIP_INPUT:
+                return UNSET
+            parts.append(answer)
+        return self.cast_nargs(parts)
 
 
 @dataclass

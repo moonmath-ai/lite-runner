@@ -483,7 +483,7 @@ def test_override_run_skips_prompting(tmp_path):
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
-        patch("genai_runner.runner.questionary") as mock_q,
+        patch("genai_runner.params.questionary") as mock_q,
     ):
         r2.run(interactive=False)
     # Questionary should never be called
@@ -535,7 +535,7 @@ def test_with_metadata_partial():
 
 def test_ask_user_fills_from_questionary():
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     assert r.param_values["prompt"] == "a cat"
@@ -558,7 +558,7 @@ def test_ask_user_non_interactive_ok_with_defaults():
 
 def test_ask_user_select_for_choices():
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         r = runner.ask_user()
     assert r.param_values["mode"] == "fast"
@@ -575,7 +575,7 @@ def test_ask_user_type_list_prompts_each_part():
         ],
     )
     answers = iter(["0", "0.8"])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
         r = runner.ask_user()
@@ -586,7 +586,7 @@ def test_ask_user_type_list_prompts_each_part():
 def test_ask_user_path_image_uses_path_widget():
     """path-image type should use questionary.path() widget."""
     runner = _make_runner(params=[Param("img", type="path-image")])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
         r = runner.ask_user()
     mock_q.path.assert_called_once()
@@ -595,7 +595,7 @@ def test_ask_user_path_image_uses_path_widget():
 
 def test_ask_user_cancel_exits():
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = None
         with pytest.raises(SystemExit, match="1"):
             runner.ask_user()
@@ -604,7 +604,7 @@ def test_ask_user_cancel_exits():
 def test_ask_user_prompts_default_param():
     """Params with defaults are prompted with default pre-filled."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "99"
         r = runner.ask_user()
     mock_q.text.assert_called_once_with("seed:", default="42")
@@ -615,7 +615,7 @@ def test_ask_user_skips_cli_provided_param():
     """Params explicitly provided on CLI are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.parse_cli(["--seed", "99"])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         r = r.ask_user()
     mock_q.text.assert_not_called()
     assert r.param_values["seed"] == 99
@@ -625,7 +625,7 @@ def test_ask_user_skips_overridden_param():
     """Params set via overrides are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=77)
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         r = r.ask_user()
     mock_q.text.assert_not_called()
     assert r.param_values["seed"] == 77
@@ -639,7 +639,7 @@ def test_ask_user_skips_no_prompt_param():
             Param("threshold", type="float", default=-3.0, prompt=False),
         ],
     )
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     # Only prompt should be prompted, not threshold
@@ -666,7 +666,7 @@ def test_no_prompt_param_accepts_cli_flag():
 def test_skip_single_param_returns_unset():
     """Typing '-' at a text prompt returns UNSET."""
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["prompt"] is UNSET
@@ -675,7 +675,7 @@ def test_skip_single_param_returns_unset():
 def test_skip_select_param_returns_unset():
     """Selecting '-' in a choices prompt returns UNSET."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["mode"] is UNSET
@@ -684,7 +684,7 @@ def test_skip_select_param_returns_unset():
 def test_skip_select_includes_dash_in_choices():
     """Select prompt should prepend '-' to the choices list."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         runner.ask_user()
     call_args = mock_q.select.call_args
@@ -702,7 +702,7 @@ def test_skip_nargs_returns_unset():
             ),
         ],
     )
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["image"] is UNSET
@@ -1520,7 +1520,7 @@ def test_sources_fixed():
 
 def test_sources_prompt():
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.runner.questionary") as mock_q:
+    with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     assert r.param_sources["prompt"] == "prompt"

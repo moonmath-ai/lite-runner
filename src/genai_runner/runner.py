@@ -23,19 +23,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO, Self, TextIO
 
-import questionary
-
 from .backends import JsonBackend, LogBackend, WandbBackend
 from .params import (
-    _PARAM_TYPE_MAP,
-    _SKIP_INPUT,
     UNSET,
     Metric,
     Output,
     Param,
     RunFlags,
     _log_as_from_type,
-    _Unset,
 )
 
 RUNS_DIR = Path.home() / "genai_runs"
@@ -226,7 +221,7 @@ class Runner:
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
                 if self.params_by_name[name].nargs is not None:
-                    val = _cast_nargs(val, self.params_by_name[name].type_list)
+                    val = self.params_by_name[name].cast_nargs(val)
                 new.param_values[name] = val
                 new.param_sources[name] = "cli"
         new.cli_explicit_flags = explicit_flags
@@ -301,10 +296,7 @@ class Runner:
 
         for p in promptable:
             default = new.param_values.get(p.name)
-            if p.nargs is not None:
-                val = self._prompt_nargs(p, default=default)
-            else:
-                val = self._prompt_single(p, default=default)
+            val = p.ask(default=default)
             new.param_values[p.name] = val
             new.param_sources[p.name] = "prompt"
 
@@ -592,59 +584,6 @@ class Runner:
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
 
     # -----------------------------------------------------------------------
-    # Interactive prompts (internal helpers)
-    # -----------------------------------------------------------------------
-
-    def _prompt_single(
-        self, p: Param, default: object = None
-    ) -> int | float | str | _Unset:
-        label = p.help or p.name
-        default_str = str(default) if default is not None else ""
-        if p.choices:
-            choices = [_SKIP_INPUT, *p.choices]
-            default_choice = str(default) if default is not None else None
-            answer = questionary.select(
-                f"{label}:", choices=choices, default=default_choice
-            ).ask()
-        elif isinstance(p.type, str) and p.type.startswith("path"):
-            answer = questionary.path(f"{label}:", default=default_str).ask()
-        else:
-            answer = questionary.text(f"{label}:", default=default_str).ask()
-
-        if answer is None:
-            print("Cancelled.", file=sys.stderr)
-            sys.exit(1)
-
-        if answer == _SKIP_INPUT:
-            return UNSET
-
-        caster = _PARAM_TYPE_MAP.get(p.type, str)
-        return caster(answer)
-
-    def _prompt_nargs(self, p: Param, default: object = None) -> list | _Unset:
-        assert p.nargs is not None
-        labels = p.labels or [f"{p.name}[{i}]" for i in range(p.nargs)]
-        element_types = p.type_list
-        defaults = default if isinstance(default, list) else [None] * p.nargs
-        parts = []
-        for label, etype, d in zip(labels, element_types, defaults, strict=True):
-            default_str = str(d) if d is not None else ""
-            if etype.startswith("path"):
-                answer = questionary.path(
-                    f"{p.name} {label}:", default=default_str
-                ).ask()
-            else:
-                answer = questionary.text(
-                    f"{p.name} {label}:", default=default_str
-                ).ask()
-            if answer is None:
-                print("Cancelled.", file=sys.stderr)
-                sys.exit(1)
-            if answer == _SKIP_INPUT:
-                return UNSET
-            parts.append(answer)
-        return _cast_nargs(parts, element_types)
-
     # -----------------------------------------------------------------------
     # Dry-run file plan
     # -----------------------------------------------------------------------
@@ -1002,14 +941,6 @@ class Runner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _cast_nargs(values: list, types: list[str]) -> list:
-    """Cast each element in *values* according to the corresponding type string."""
-    if len(values) != len(types):
-        msg = f"Expected {len(types)} values, got {len(values)}: {values}"
-        raise ValueError(msg)
-    return [_PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)]
 
 
 def _split_glob(path_str: str) -> tuple[Path, str]:
