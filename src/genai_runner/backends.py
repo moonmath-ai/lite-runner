@@ -197,15 +197,12 @@ class DryRunBackend:
         tags: list[str],
         config: dict,
     ) -> None:
+        self.run_name = name or "dry_run"
         print(f"[dry-run] Project: {project}")
-        print(f"[dry-run] Name: {name}")
+        print(f"[dry-run] Name: {self.run_name}")
         print(f"[dry-run] Group: {group}")
         print(f"[dry-run] Tags: {tags}")
         print(f"[dry-run] Config: {config}")
-
-    @property
-    def run_name(self) -> str:
-        return "dry_run"
 
     def update_config(self, updates: dict) -> None:
         print(f"[dry-run] Updating config: {updates}")
