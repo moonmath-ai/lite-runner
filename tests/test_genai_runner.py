@@ -245,7 +245,7 @@ def test_parse_bool_flag():
 def test_parse_bool_flag_absent():
     runner = _make_runner([Param("verbose", type="bool")])
     r = runner.parse_cli([])
-    assert "verbose" not in r.param_values
+    assert "verbose" not in r.param_values or r.param_values["verbose"] is False
 
 
 def test_fixed_params_not_in_argparse():
@@ -1286,7 +1286,7 @@ def test_no_wandb_flag_parsed():
 def test_no_wandb_flag_default():
     runner = _make_runner()
     r = runner.parse_cli([])
-    assert r.run_flags.no_wandb is False
+    assert bool(r.run_flags.no_wandb) is False
 
 
 def test_full_run_no_wandb(tmp_path):

@@ -150,7 +150,7 @@ class Param:
         """Params with a value= are never prompted or parsed from CLI."""
         return self.value is not None
 
-    def _argparse_kwargs(self) -> dict:
+    def argparse_kwargs(self) -> dict:
         """Build kwargs for argparse.add_argument."""
         kwargs: dict = {"dest": self.dest, "default": None, "help": self.help or None}
         if self.type == "bool":
@@ -208,9 +208,9 @@ class Metric:
 
 
 @dataclass(frozen=True)
-class _RunFlags:
-    dry_run: bool = False
-    interactive: bool = True
-    no_wandb: bool = False
+class RunFlags:
+    dry_run: bool | None = None
+    interactive: bool | None = True
+    no_wandb: bool | None = None
     run_name: str | None = None
     wandb_project: str | None = None

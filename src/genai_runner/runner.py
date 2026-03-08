@@ -21,7 +21,7 @@ import zipfile
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import IO, TextIO
+from typing import IO, Self, TextIO
 
 import questionary
 
@@ -34,12 +34,12 @@ from .params import (
     Output,
     Param,
     _log_as_from_type,
-    _RunFlags,
+    RunFlags,
     _Unset,
 )
 
 RUNS_DIR = Path.home() / "genai_runs"
-LOGGING_PREFIX = "\033[36m" "genai-runner:" "\033[0m"
+LOGGING_PREFIX = "\033[36mgenai-runner:\033[0m"
 
 
 @dataclass
@@ -85,7 +85,7 @@ class Runner:
             self.command = shlex.split(self.command)
         self.param_values: dict[str, object] = {}
         self.param_sources: dict[str, str] = {}
-        self.run_flags: _RunFlags | None = None
+        self.run_flags: RunFlags | None = None
         self.cli_explicit_flags: set[str] = set()
         self.cli_parsed: bool = False
         self.defaults_resolved: bool = False
@@ -96,14 +96,81 @@ class Runner:
     # Public param pipeline
     # -------------------------------------------------------------------
 
-    def parse_cli(self, argv: list[str] | None = None) -> Runner:
-        """Parse CLI arguments and return a new Runner with values applied.
+    def get_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            description="genai_runner experiment launcher",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        # Built-in flags — default=None so we can detect explicit usage
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            default=None,
+            help="Print command and exit",
+        )
+        parser.add_argument(
+            "--no-interactive",
+            action="store_true",
+            default=None,
+            help="Non-interactive mode; fail if required params are missing",
+        )
+        parser.add_argument("--run-name", default=None, help="Override W&B run name")
+        parser.add_argument(
+            "--wandb-project",
+            default=None,
+            help="Override W&B project name",
+        )
+        parser.add_argument(
+            "--no-wandb",
+            action="store_true",
+            default=None,
+            help="Skip W&B logging; still execute command and save outputs locally",
+        )
+
+        for param in self.params:
+            if not param.is_fixed:
+                parser.add_argument(param.flag, **param.argparse_kwargs())
+
+        return parser
+
+    def parse_cli(self, argv: list[str] | None = None) -> Self:
+        """Parse CLI arguments and return a Runner with values applied.
 
         Args:
             argv: Command-line arguments to parse.  ``None`` means
                 ``sys.argv[1:]``.
+
+        Returns:
+            A new Runner with the values applied.
         """
-        parsed_params, run_flags, explicit_flags = self._parse_cli_args(argv)
+        parser = self.get_parser()
+        parsed_args = parser.parse_args(argv)
+        parsed_params = {
+            p.name: getattr(parsed_args, p.dest, None)
+            for p in self.params
+            if not p.is_fixed
+        }
+
+        # Track which run flags were explicitly set on CLI
+        explicit_flags: set[str] = set()
+        if parsed_args.dry_run is not None:
+            explicit_flags.add("dry_run")
+        if parsed_args.no_interactive is not None:
+            explicit_flags.add("interactive")
+        if parsed_args.no_wandb is not None:
+            explicit_flags.add("no_wandb")
+        if parsed_args.run_name is not None:
+            explicit_flags.add("run_name")
+        if parsed_args.wandb_project is not None:
+            explicit_flags.add("wandb_project")
+
+        run_flags = RunFlags(
+            dry_run=(parsed_args.dry_run),
+            interactive=not (parsed_args.no_interactive),
+            no_wandb=(parsed_args.no_wandb),
+            run_name=parsed_args.run_name,
+            wandb_project=parsed_args.wandb_project,
+        )
 
         new = copy.copy(self)
         new.param_values = dict(self.param_values)
@@ -266,9 +333,9 @@ class Runner:
         interactive: bool | None = None,
         no_wandb: bool | None = None,
         run_name: str | None = None,
-    ) -> _RunFlags:
+    ) -> RunFlags:
         """Merge run() kwargs with CLI flags, warning on contradictions."""
-        base = self.run_flags or _RunFlags()
+        base = self.run_flags or RunFlags()
         updates: dict[str, object] = {}
         for field_name, value in [
             ("dry_run", dry_run),
@@ -538,84 +605,6 @@ class Runner:
         print(f"{LOGGING_PREFIX} Status: {status} (exit code {exit_code})")
         print(f"{LOGGING_PREFIX} Duration: {duration:.1f}s")
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
-
-    # -----------------------------------------------------------------------
-    # CLI parsing
-    # -----------------------------------------------------------------------
-
-    def _parse_cli_args(
-        self, argv: list[str] | None = None
-    ) -> tuple[dict, _RunFlags, set[str]]:
-        """Parse argv into (param_values, run_flags, explicit_flags).
-
-        Returns a tuple of:
-        - param values dict (name -> value, None for unset)
-        - _RunFlags with built-in flag values
-        - set of flag names explicitly passed on CLI (for contradiction warnings)
-        """
-        parser = argparse.ArgumentParser(
-            description="genai_runner experiment launcher",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
-        # Built-in flags — default=None so we can detect explicit usage
-        parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            default=None,
-            help="Print command and exit",
-        )
-        parser.add_argument(
-            "--no-interactive",
-            action="store_true",
-            default=None,
-            help="Non-interactive mode; fail if required params are missing",
-        )
-        parser.add_argument("--run-name", default=None, help="Override W&B run name")
-        parser.add_argument(
-            "--wandb-project",
-            default=None,
-            help="Override W&B project name",
-        )
-        parser.add_argument(
-            "--no-wandb",
-            action="store_true",
-            default=None,
-            help="Skip W&B logging; still execute command and save outputs locally",
-        )
-
-        for p in self.params:
-            if not p.is_fixed:
-                kw = p._argparse_kwargs()
-                if p.type == "bool":
-                    kw["default"] = None
-                parser.add_argument(p.flag, **kw)
-
-        ns = parser.parse_args(argv)
-        parsed_params = {
-            p.name: getattr(ns, p.dest, None) for p in self.params if not p.is_fixed
-        }
-
-        # Track which run flags were explicitly set on CLI
-        explicit_flags: set[str] = set()
-        if ns.dry_run is not None:
-            explicit_flags.add("dry_run")
-        if ns.no_interactive is not None:
-            explicit_flags.add("interactive")
-        if ns.no_wandb is not None:
-            explicit_flags.add("no_wandb")
-        if ns.run_name is not None:
-            explicit_flags.add("run_name")
-        if ns.wandb_project is not None:
-            explicit_flags.add("wandb_project")
-
-        run_flags = _RunFlags(
-            dry_run=bool(ns.dry_run),
-            interactive=not bool(ns.no_interactive),
-            no_wandb=bool(ns.no_wandb),
-            run_name=ns.run_name,
-            wandb_project=ns.wandb_project,
-        )
-        return parsed_params, run_flags, explicit_flags
 
     # -----------------------------------------------------------------------
     # Interactive prompts (internal helpers)
