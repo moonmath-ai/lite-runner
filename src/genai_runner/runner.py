@@ -7,6 +7,7 @@ import copy
 import datetime
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys

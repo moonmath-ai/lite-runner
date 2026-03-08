@@ -1019,6 +1019,23 @@ def test_run_kwargs_no_warn_on_default():
 
 
 # ---------------------------------------------------------------------------
+# check_disk_space
+# ---------------------------------------------------------------------------
+
+
+def test_check_disk_space_passes_when_enough():
+    runner = Runner(command="echo", params=[])
+    # Should not raise — there's definitely more than 0.001 GiB free
+    runner.check_disk_space(0.001)
+
+
+def test_check_disk_space_exits_when_not_enough():
+    runner = Runner(command="echo", params=[])
+    with pytest.raises(SystemExit):
+        runner.check_disk_space(999_999)
+
+
+# ---------------------------------------------------------------------------
 # Dry run (integration)
 # ---------------------------------------------------------------------------
 
