@@ -227,8 +227,6 @@ class Runner:
         new.cli_explicit_flags = explicit_flags
         new.run_flags = run_flags
         new.cli_parsed = True
-        new.defaults_resolved = False
-        new.filled = False
         return new
 
     def resolve_defaults(self) -> Runner:
