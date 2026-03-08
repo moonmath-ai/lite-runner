@@ -589,13 +589,12 @@ class Runner:
         """Build a colored command string for display."""
         _RST = "\033[0m"
         _BOLD = "\033[1m"
-        _COLORS = {
-            "flag": "\033[31m",  # red — prompted, required
-            "flag+default": "\033[32m",  # green — prompted, kept default
-            "cli": "\033[36m",  # cyan — from CLI/override, non-default value
-            "cli+default": "\033[34m",  # blue — from CLI/override, kept default
-            "value": "\033[33m",  # yellow — fixed value=
-            "no-prompt": "\033[35m",  # magenta — no-prompt, default used
+        _SOURCE_COLORS = {
+            "prompt": "\033[31m",  # red — user prompted
+            "default": "\033[32m",  # green — default value
+            "cli": "\033[36m",  # cyan — from CLI
+            "override": "\033[36m",  # cyan — from override
+            "fixed": "\033[33m",  # yellow — fixed value=
         }
 
         parts = [shlex.join(self.command)]
@@ -610,16 +609,7 @@ class Runner:
                 continue
 
             source = param_sources.get(p.name, "")
-            if source == "fixed":
-                kind = "value"
-            elif not p.prompt:
-                kind = "no-prompt"
-            elif source in ("cli", "override"):
-                kind = "cli+default" if self._is_default_value(p, val) else "cli"
-            else:
-                kind = "flag+default" if self._is_default_value(p, val) else "flag"
-
-            color = _COLORS[kind]
+            color = _SOURCE_COLORS.get(source, _RST)
             if p.type == "bool":
                 parts.append(f"{color}{p.flag}{_RST}")
             else:
@@ -628,19 +618,9 @@ class Runner:
                 parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
         return " ".join(parts)
 
-    @staticmethod
-    def _is_default_value(p: Param, val: object) -> bool:
-        """Check whether val matches the param's default."""
-        if p.default is None:
-            return False
-        default = p.default() if callable(p.default) else p.default
-        if isinstance(val, list) and isinstance(default, list):
-            return [str(v) for v in val] == [str(d) for d in default]
-        return str(val) == str(default)
-
     def _build_command(self, param_values: dict) -> list[str]:
         """Build the subprocess argv from command + resolved param values."""
-        cmd = list(self.command)
+        cmd = self.command
         for p in self.params:
             val = param_values.get(p.name)
             if val is UNSET:
