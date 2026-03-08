@@ -83,14 +83,14 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        self._param_values: dict[str, object] = {}
-        self._param_sources: dict[str, str] = {}
-        self._run_flags: _RunFlags | None = None
-        self._cli_explicit_flags: set[str] = set()
-        self._cli_parsed: bool = False
-        self._defaults_resolved: bool = False
-        self._filled: bool = False
-        self._backends: list[LogBackend] = []
+        self.param_values: dict[str, object] = {}
+        self.param_sources: dict[str, str] = {}
+        self.run_flags: _RunFlags | None = None
+        self.cli_explicit_flags: set[str] = set()
+        self.cli_parsed: bool = False
+        self.defaults_resolved: bool = False
+        self.filled: bool = False
+        self.backends: list[LogBackend] = []
 
     # -------------------------------------------------------------------
     # Public param pipeline
@@ -106,19 +106,19 @@ class Runner:
         parsed_params, run_flags, explicit_flags = self._parse_cli_args(argv)
 
         new = copy.copy(self)
-        new._param_values = dict(self._param_values)
-        new._param_sources = dict(self._param_sources)
+        new.param_values = dict(self.param_values)
+        new.param_sources = dict(self.param_sources)
 
         for name, val in parsed_params.items():
-            if val is not None and new._param_sources.get(name) != "override":
-                new._param_values[name] = val
-                new._param_sources[name] = "cli"
+            if val is not None and new.param_sources.get(name) != "override":
+                new.param_values[name] = val
+                new.param_sources[name] = "cli"
 
-        new._run_flags = run_flags
-        new._cli_explicit_flags = explicit_flags
-        new._cli_parsed = True
-        new._defaults_resolved = False
-        new._filled = False
+        new.run_flags = run_flags
+        new.cli_explicit_flags = explicit_flags
+        new.cli_parsed = True
+        new.defaults_resolved = False
+        new.filled = False
         return new
 
     def override(self, **kwargs: object) -> Runner:
@@ -144,11 +144,11 @@ class Runner:
             raise ValueError(msg)
 
         new = copy.copy(self)
-        new._param_values = dict(self._param_values)
-        new._param_sources = dict(self._param_sources)
-        new._param_values.update(resolved)
+        new.param_values = dict(self.param_values)
+        new.param_sources = dict(self.param_sources)
+        new.param_values.update(resolved)
         for name in resolved:
-            new._param_sources[name] = "override"
+            new.param_sources[name] = "override"
         return new
 
     def with_metadata(
@@ -174,31 +174,31 @@ class Runner:
         Params already set (by CLI or override) are not changed.
         """
         new = copy.copy(self)
-        new._param_values = dict(self._param_values)
-        new._param_sources = dict(self._param_sources)
+        new.param_values = dict(self.param_values)
+        new.param_sources = dict(self.param_sources)
 
         for p in self.params:
-            if p.name in new._param_values:
+            if p.name in new.param_values:
                 continue
             if p.is_fixed:
-                new._param_values[p.name] = p.value() if callable(p.value) else p.value
-                new._param_sources[p.name] = "fixed"
+                new.param_values[p.name] = p.value() if callable(p.value) else p.value
+                new.param_sources[p.name] = "fixed"
             elif p.type == "bool":
-                new._param_values[p.name] = False
-                new._param_sources[p.name] = "default"
+                new.param_values[p.name] = False
+                new.param_sources[p.name] = "default"
             elif p.default is not None:
-                new._param_values[p.name] = (
+                new.param_values[p.name] = (
                     p.default() if callable(p.default) else p.default
                 )
-                new._param_sources[p.name] = "default"
+                new.param_sources[p.name] = "default"
 
         # Cast multi-value args to per-element types
         for p in self.params:
-            val = new._param_values.get(p.name)
+            val = new.param_values.get(p.name)
             if p.nargs is not None and val is not None and val is not UNSET:
-                new._param_values[p.name] = _cast_nargs(val, p.type_list)
+                new.param_values[p.name] = _cast_nargs(val, p.type_list)
 
-        new._defaults_resolved = True
+        new.defaults_resolved = True
         return new
 
     def ask_user(self, *, interactive: bool | None = None) -> Runner:
@@ -208,15 +208,15 @@ class Runner:
         are missing.  Auto-calls :meth:`resolve_defaults` if needed.
         """
         r = self
-        if not r._defaults_resolved:
+        if not r.defaults_resolved:
             r = r.resolve_defaults()
 
         if interactive is None:
-            interactive = r._run_flags.interactive if r._run_flags else True
+            interactive = r.run_flags.interactive if r.run_flags else True
 
         new = copy.copy(r)
-        new._param_values = dict(r._param_values)
-        new._param_sources = dict(r._param_sources)
+        new.param_values = dict(r.param_values)
+        new.param_sources = dict(r.param_sources)
 
         # Params eligible for prompting: non-fixed, non-bool,
         # not explicitly set via CLI or overrides
@@ -226,10 +226,10 @@ class Runner:
             if not p.is_fixed
             and p.prompt
             and p.type != "bool"
-            and r._param_sources.get(p.name) not in ("cli", "override")
+            and r.param_sources.get(p.name) not in ("cli", "override")
         ]
 
-        missing = [p for p in promptable if p.name not in r._param_values]
+        missing = [p for p in promptable if p.name not in r.param_values]
 
         if not interactive:
             if missing:
@@ -244,19 +244,19 @@ class Runner:
                     file=sys.stderr,
                 )
                 sys.exit(2)
-            new._filled = True
+            new.filled = True
             return new
 
         for p in promptable:
-            default = new._param_values.get(p.name)
+            default = new.param_values.get(p.name)
             if p.nargs is not None:
                 val = self._prompt_nargs(p, default=default)
             else:
                 val = self._prompt_single(p, default=default)
-            new._param_values[p.name] = val
-            new._param_sources[p.name] = "prompt"
+            new.param_values[p.name] = val
+            new.param_sources[p.name] = "prompt"
 
-        new._filled = True
+        new.filled = True
         return new
 
     def _merge_run_flags(
@@ -268,7 +268,7 @@ class Runner:
         run_name: str | None = None,
     ) -> _RunFlags:
         """Merge run() kwargs with CLI flags, warning on contradictions."""
-        base = self._run_flags or _RunFlags()
+        base = self.run_flags or _RunFlags()
         updates: dict[str, object] = {}
         for field_name, value in [
             ("dry_run", dry_run),
@@ -278,7 +278,7 @@ class Runner:
         ]:
             if value is None:
                 continue
-            if field_name in self._cli_explicit_flags:
+            if field_name in self.cli_explicit_flags:
                 cli_val = getattr(base, field_name)
                 if cli_val != value:
                     print(
@@ -327,7 +327,7 @@ class Runner:
             sys.exit(1)
 
         r = self
-        if not r._cli_parsed:
+        if not r.cli_parsed:
             r = r.parse_cli()
 
         flags = r._merge_run_flags(
@@ -337,13 +337,13 @@ class Runner:
             run_name=run_name,
         )
 
-        if not r._defaults_resolved:
+        if not r.defaults_resolved:
             r = r.resolve_defaults()
-        if not r._filled:
+        if not r.filled:
             r = r.ask_user(interactive=flags.interactive)
 
-        param_values = r._param_values
-        param_sources = r._param_sources
+        param_values = r.param_values
+        param_sources = r.param_sources
 
         # Git info and project
         git_info = _collect_git_info()
@@ -419,13 +419,13 @@ class Runner:
         json_backend.init(project, run_name, r.run_group, r.tags, config)
 
         # Assemble backends
-        r._backends = [json_backend]
+        r.backends = [json_backend]
         if wb_backend is not None:
-            r._backends.append(wb_backend)
+            r.backends.append(wb_backend)
 
         # Save code snapshot (git archive + dirty diff)
         try:
-            _log_code_snapshot(r._backends, output_dir, git_info)
+            _log_code_snapshot(r.backends, output_dir, git_info)
         except Exception as e:  # noqa: BLE001
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
@@ -440,7 +440,7 @@ class Runner:
 
         # Build command
         cmd = r._build_command(interpolated_params)
-        for b in r._backends:
+        for b in r.backends:
             b.update_config({"meta/full_command": shlex.join(cmd)})
         colored_cmd = r._format_command(interpolated_params, param_sources)
         print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
@@ -511,14 +511,14 @@ class Runner:
             (
                 "tag run status",
                 lambda: (
-                    [b.set_tags([*run_tags, status]) for b in self._backends]
+                    [b.set_tags([*run_tags, status]) for b in self.backends]
                     if status != "success"
                     else None
                 ),
             ),
             (
                 "update summary",
-                lambda: [b.set_summary(summary) for b in self._backends],
+                lambda: [b.set_summary(summary) for b in self.backends],
             ),
         ]
 
@@ -529,7 +529,7 @@ class Runner:
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
 
         # Finish each backend individually so one failure doesn't block others
-        for b in self._backends:
+        for b in self.backends:
             try:
                 b.finish(exit_code)
             except Exception as e:  # noqa: BLE001
@@ -913,7 +913,7 @@ class Runner:
             if p.table and resolved_params.get(p.name) not in (None, UNSET)
         ]
         if rows:
-            for b in self._backends:
+            for b in self.backends:
                 b.log_table("params", ["name", "value"], rows)
 
     # -----------------------------------------------------------------------
@@ -936,7 +936,7 @@ class Runner:
                 if not path.exists():
                     msg = f"File not found: {path} (param '{p.name}')"
                     raise FileNotFoundError(msg)
-                for b in self._backends:
+                for b in self.backends:
                     b.log_file(path, log_as, key=p.name)
 
     def _log_extra_outputs(self, output_dir: Path) -> None:
@@ -960,7 +960,7 @@ class Runner:
                 base = path
                 matches = sorted(path.rglob("*"))
             else:
-                _log_single_output(self._backends, path, o, out)
+                _log_single_output(self.backends, path, o, out)
                 continue
 
             # Glob or directory: upload matches
@@ -980,11 +980,11 @@ class Runner:
                     )
                     raise ValueError(msg)
                 seen_zips.add(label)
-                _zip_and_upload(self._backends, matches, base, output_dir, label)
+                _zip_and_upload(self.backends, matches, base, output_dir, label)
             else:
                 for m in matches:
                     if m.is_file():
-                        for b in self._backends:
+                        for b in self.backends:
                             b.log_file(m, o.log_as, key=label)
 
     def _log_run_logs(self, output_dir: Path) -> None:
@@ -994,7 +994,7 @@ class Runner:
             if (output_dir / name).exists()
         ]
         if files:
-            for b in self._backends:
+            for b in self.backends:
                 b.log_artifact("logs", "log", files)
 
     # -----------------------------------------------------------------------
@@ -1016,7 +1016,7 @@ class Runner:
                     val = raw
             else:
                 val = raw
-            for b in self._backends:
+            for b in self.backends:
                 b.set_metric(m.name, val)
 
 
