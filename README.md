@@ -132,7 +132,7 @@ runner = Runner(
     group="lr-sweep",           # groups all runs together in W&B UI
 )
 for lr in [1e-3, 1e-4, 1e-5]:
-    runner.override(learning_rate=lr).run(interactive=False)
+    runner.override(learning_rate=lr).run(no_interactive=True)
 ```
 
 Each call creates a separate W&B run, all grouped under the same `group`.
@@ -178,10 +178,10 @@ Methods:
 | `override(**kwargs)` | Set param values by name |
 | `with_metadata(project=, group=, tags=)` | Update W&B metadata |
 | `resolve_defaults()` | Apply defaults and fixed values |
-| `ask_user(interactive=)` | Prompt for missing values |
+| `ask_user(no_interactive=)` | Prompt for missing values |
 | `run(...)` | Auto-calls any unapplied steps, then executes |
 
-`run()` accepts kwargs `dry_run`, `interactive`, `no_wandb`, `run_name` as alternatives to CLI flags.
+`run()` accepts kwargs `dry_run`, `no_interactive`, `no_wandb`, `run_name` as alternatives to CLI flags.
 
 ## Built-in CLI flags
 

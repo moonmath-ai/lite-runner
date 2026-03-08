@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from genai_runner import UNSET, JsonBackend, Metric, Output, Param, Runner
-from genai_runner.params import _log_as_from_type
+from genai_runner.params import RunFlags, _log_as_from_type
 from genai_runner.runner import _collect_git_info, _split_glob
 
 # ---------------------------------------------------------------------------
@@ -288,7 +288,7 @@ def test_builtin_flags():
     runner = _make_runner()
     r = runner.parse_cli(["--dry-run", "--no-interactive"])
     assert r.run_flags.dry_run is True
-    assert r.run_flags.interactive is False
+    assert r.run_flags.no_interactive is True
 
 
 def test_wandb_project_override():
@@ -485,7 +485,7 @@ def test_override_run_skips_prompting(tmp_path):
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         patch("genai_runner.params.questionary") as mock_q,
     ):
-        r2.run(interactive=False)
+        r2.run(no_interactive=True)
     # Questionary should never be called
     mock_q.text.assert_not_called()
     mock_q.select.assert_not_called()
@@ -546,12 +546,12 @@ def test_ask_user_fills_from_questionary():
 def test_ask_user_non_interactive_exits_on_missing():
     runner = _make_runner(params=[Param("prompt")])
     with pytest.raises(SystemExit, match="2"):
-        runner.ask_user(interactive=False)
+        runner.ask_user(no_interactive=True)
 
 
 def test_ask_user_non_interactive_ok_with_defaults():
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
-    r = runner.ask_user(interactive=False)
+    r = runner.ask_user(no_interactive=True)
     assert r.param_values["seed"] == 42
     assert r.filled
 
@@ -980,7 +980,7 @@ def test_run_kwargs_override_defaults(tmp_path):
         tags=["v1"],
     )
     with patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
-        runner.run(dry_run=True, interactive=False)
+        runner.run(dry_run=True, no_interactive=True)
     # If we got here without error, dry run worked
 
 
@@ -988,19 +988,21 @@ def test_run_kwargs_warn_on_contradiction(capsys):
     """run() warns when kwargs contradict explicit CLI flags."""
     runner = _make_runner()
     r = runner.parse_cli(["--no-interactive"])
-    flags = r._merge_run_flags(interactive=True)
-    assert flags.interactive is True  # kwarg wins
+    base_flags = r.run_flags or RunFlags()
+    flags = base_flags.merge(r.cli_explicit_flags, no_interactive=False)
+    assert flags.no_interactive is False  # kwarg wins
     captured = capsys.readouterr()
     assert "Warning" in captured.err
-    assert "interactive" in captured.err
+    assert "no_interactive" in captured.err
 
 
 def test_run_kwargs_no_warn_on_default():
     """No warning when kwarg matches CLI default (not explicitly passed)."""
     runner = _make_runner()
     r = runner.parse_cli([])
-    flags = r._merge_run_flags(interactive=False)
-    assert flags.interactive is False  # kwarg wins, no warning
+    base_flags = r.run_flags or RunFlags()
+    flags = base_flags.merge(r.cli_explicit_flags, no_interactive=True)
+    assert flags.no_interactive is True  # kwarg wins, no warning
 
 
 # ---------------------------------------------------------------------------
@@ -1020,7 +1022,7 @@ def test_dry_run_prints_command_no_wandb(capsys):
     )
     r = runner.parse_cli(["--prompt", "test"])
     with patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
-        r.run(dry_run=True, interactive=False)
+        r.run(dry_run=True, no_interactive=True)
     captured = capsys.readouterr()
     out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
     assert "[dry-run]" in out
@@ -1042,7 +1044,7 @@ def test_no_project_raises_valueerror():
         patch("genai_runner.runner._collect_git_info", return_value={}),
         pytest.raises(ValueError, match="Cannot determine project name"),
     ):
-        runner.run(interactive=False)
+        runner.run(no_interactive=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1074,7 +1076,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
-        runner.run(interactive=False)
+        runner.run(no_interactive=True)
 
     mock_wb.init.assert_called_once()
     assert mock_wb.init.call_args[1]["project"] == "test-repo"
@@ -1105,7 +1107,7 @@ def test_full_run_explicit_group(tmp_path):
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
-        runner.run(interactive=False)
+        runner.run(no_interactive=True)
 
     assert mock_wb.init.call_args[1]["group"] == "my-sweep"
 
@@ -1304,7 +1306,7 @@ def test_full_run_no_wandb(tmp_path):
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
-        runner.run(no_wandb=True, interactive=False)
+        runner.run(no_wandb=True, no_interactive=True)
 
     # Find the output dir
     project_dir = tmp_path / "genai_runs" / "test-repo"
@@ -1362,7 +1364,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
-        runner.run(interactive=False)
+        runner.run(no_interactive=True)
 
     # W&B should have been called
     mock_wb.init.assert_called_once()
@@ -1394,7 +1396,7 @@ def test_no_wandb_failed_run(tmp_path):
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         pytest.raises(SystemExit, match="1"),
     ):
-        runner.run(no_wandb=True, interactive=False)
+        runner.run(no_wandb=True, no_interactive=True)
 
     project_dir = tmp_path / "genai_runs" / "test-repo"
     run_dirs = list(project_dir.iterdir())
@@ -1481,7 +1483,7 @@ def test_table_param_logged_to_wandb(tmp_path):
         patch("genai_runner.runner._log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
-        runner.run(interactive=False)
+        runner.run(no_interactive=True)
 
     mock_wb.Table.assert_called_once_with(
         columns=["name", "value"], data=[["prompt", "a cat"]]

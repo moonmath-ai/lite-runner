@@ -19,7 +19,7 @@ import threading
 import time
 import zipfile
 from contextlib import ExitStack, suppress
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Self, TextIO
 
@@ -201,7 +201,7 @@ class Runner:
         if parsed_args.dry_run is not None:
             explicit_flags.add("dry_run")
         if parsed_args.no_interactive is not None:
-            explicit_flags.add("interactive")
+            explicit_flags.add("no_interactive")
         if parsed_args.no_wandb is not None:
             explicit_flags.add("no_wandb")
         if parsed_args.run_name is not None:
@@ -210,9 +210,9 @@ class Runner:
             explicit_flags.add("wandb_project")
 
         run_flags = RunFlags(
-            dry_run=(parsed_args.dry_run),
-            interactive=not (parsed_args.no_interactive),
-            no_wandb=(parsed_args.no_wandb),
+            dry_run=parsed_args.dry_run,
+            no_interactive=parsed_args.no_interactive,
+            no_wandb=parsed_args.no_wandb,
             run_name=parsed_args.run_name,
             wandb_project=parsed_args.wandb_project,
         )
@@ -252,7 +252,7 @@ class Runner:
         new.defaults_resolved = True
         return new
 
-    def ask_user(self, *, interactive: bool | None = None) -> Runner:
+    def ask_user(self, *, no_interactive: bool | None = None) -> Runner:
         """Return a copy with missing params filled via interactive prompts.
 
         In non-interactive mode, raises SystemExit if required params
@@ -260,8 +260,8 @@ class Runner:
         """
         new = self.copy() if self.defaults_resolved else self.resolve_defaults()
 
-        if interactive is None:
-            interactive = new.run_flags.interactive if new.run_flags else True
+        if no_interactive is None:
+            no_interactive = new.run_flags.no_interactive if new.run_flags else None
 
         # Params eligible for prompting: non-fixed, non-bool,
         # not explicitly set via CLI or overrides
@@ -276,7 +276,7 @@ class Runner:
 
         missing = [p for p in promptable if p.name not in new.param_values]
 
-        if not interactive:
+        if no_interactive:
             if missing:
                 names = [p.name for p in missing]
                 print(
@@ -301,42 +301,11 @@ class Runner:
         new.filled = True
         return new
 
-    def _merge_run_flags(
-        self,
-        *,
-        dry_run: bool | None = None,
-        interactive: bool | None = None,
-        no_wandb: bool | None = None,
-        run_name: str | None = None,
-    ) -> RunFlags:
-        """Merge run() kwargs with CLI flags, warning on contradictions."""
-        base = self.run_flags or RunFlags()
-        updates: dict[str, object] = {}
-        for field_name, value in [
-            ("dry_run", dry_run),
-            ("interactive", interactive),
-            ("no_wandb", no_wandb),
-            ("run_name", run_name),
-        ]:
-            if value is None:
-                continue
-            if field_name in self.cli_explicit_flags:
-                cli_val = getattr(base, field_name)
-                if cli_val != value:
-                    print(
-                        f"[genai_runner] Warning: run({field_name}={value!r})"
-                        f" overrides CLI flag (was {cli_val!r})",
-                        file=sys.stderr,
-                    )
-            updates[field_name] = value
-
-        return replace(base, **updates) if updates else base
-
     def run(
         self,
         *,
         dry_run: bool | None = None,
-        interactive: bool | None = None,
+        no_interactive: bool | None = None,
         no_wandb: bool | None = None,
         run_name: str | None = None,
     ) -> None:
@@ -349,7 +318,8 @@ class Runner:
 
         Args:
             dry_run: Print the command and exit without running.
-            interactive: Prompt for missing params (default True).
+            no_interactive: Skip interactive prompts; fail if required
+                params are missing.
             no_wandb: Skip W&B logging (still logs to JSON).
             run_name: Override the W&B run name.
         """
@@ -372,9 +342,11 @@ class Runner:
         if not r.cli_parsed:
             r = r.parse_cli()
 
-        flags = r._merge_run_flags(
+        base_flags = r.run_flags or RunFlags()
+        flags = base_flags.merge(
+            r.cli_explicit_flags,
             dry_run=dry_run,
-            interactive=interactive,
+            no_interactive=no_interactive,
             no_wandb=no_wandb,
             run_name=run_name,
         )
@@ -382,7 +354,7 @@ class Runner:
         if not r.defaults_resolved:
             r = r.resolve_defaults()
         if not r.filled:
-            r = r.ask_user(interactive=flags.interactive)
+            r = r.ask_user(no_interactive=flags.no_interactive)
 
         param_values = r.param_values
         param_sources = r.param_sources

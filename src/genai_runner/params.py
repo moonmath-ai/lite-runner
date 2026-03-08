@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 import questionary
@@ -179,8 +179,7 @@ class Param:
             msg = f"Expected {len(types)} values, got {len(values)}: {values}"
             raise ValueError(msg)
         return [
-            _PARAM_TYPE_MAP.get(t, str)(v)
-            for v, t in zip(values, types, strict=True)
+            _PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)
         ]
 
     def ask(self, default: object = None) -> Any:
@@ -277,7 +276,32 @@ class Metric:
 @dataclass(frozen=True)
 class RunFlags:
     dry_run: bool | None = None
-    interactive: bool | None = True
+    no_interactive: bool | None = None
     no_wandb: bool | None = None
     run_name: str | None = None
     wandb_project: str | None = None
+
+    def merge(
+        self,
+        cli_explicit_flags: set[str] = frozenset(),
+        **overrides: object,
+    ) -> RunFlags:
+        """Return a new RunFlags with *overrides* applied.
+
+        ``None`` values in *overrides* are ignored (no change).
+        Warns when an override contradicts an explicit CLI flag.
+        """
+        updates: dict[str, object] = {}
+        for field_name, value in overrides.items():
+            if value is None:
+                continue
+            if field_name in cli_explicit_flags:
+                cli_val = getattr(self, field_name)
+                if cli_val != value:
+                    print(
+                        f"[genai_runner] Warning: run({field_name}={value!r})"
+                        f" overrides CLI flag (was {cli_val!r})",
+                        file=sys.stderr,
+                    )
+            updates[field_name] = value
+        return replace(self, **updates) if updates else self
