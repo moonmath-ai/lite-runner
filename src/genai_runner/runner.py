@@ -100,6 +100,7 @@ class Runner:
         self.cli_parsed: bool = False
         self.defaults_resolved: bool = False
         self.filled: bool = False
+
     # -------------------------------------------------------------------
     # Public param pipeline
     # -------------------------------------------------------------------
@@ -779,7 +780,6 @@ class Runner:
         return proc.returncode, duration, "".join(stdout_lines), aborted
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -796,5 +796,3 @@ def _collect_git_info() -> dict:
         "branch": repo.active_branch.name if not repo.head.is_detached else "HEAD",
         "dirty": repo.is_dirty(untracked_files=True, submodules=True),
     }
-
-

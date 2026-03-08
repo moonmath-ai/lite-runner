@@ -340,10 +340,7 @@ def log_extra_outputs(
 
         # Glob or directory: upload matches
         if not matches:
-            print(
-                f"[genai_runner] Warning: glob '{o.path}'"
-                " matched no files, skipping"
-            )
+            print(f"[genai_runner] Warning: glob '{o.path}' matched no files, skipping")
             continue
 
         label = o.name or base.name or "output"
