@@ -192,9 +192,7 @@ class Param:
 
     def _prompt_bool(self, default: object = None) -> bool:
         label = self.help or self.name
-        answer = questionary.confirm(
-            f"{label}:", default=bool(default)
-        ).ask()
+        answer = questionary.confirm(f"{label}:", default=bool(default)).ask()
         if answer is None:
             print("Cancelled.", file=sys.stderr)
             sys.exit(1)

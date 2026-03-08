@@ -744,7 +744,9 @@ def _interpolate_output(params: dict, output_dir: Path) -> dict:
     result = {}
     for k, v in params.items():
         if isinstance(v, list):
-            result[k] = [x.replace("$output", out) if isinstance(x, str) else x for x in v]
+            result[k] = [
+                x.replace("$output", out) if isinstance(x, str) else x for x in v
+            ]
         elif isinstance(v, str):
             result[k] = v.replace("$output", out)
         else:
