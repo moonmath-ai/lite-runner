@@ -608,6 +608,8 @@ class Runner:
             if p.type == "bool":
                 continue
             values = val if isinstance(val, list) else [val]
+            if color:
+                values = [shlex.quote(str(v)) for v in values]
             values = [f"{bold}{clr}{v}{rst}" for v in values]
             cmd.extend(values)
         return cmd
