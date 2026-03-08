@@ -508,7 +508,7 @@ def test_with_metadata_project():
 
 def test_with_metadata_group():
     runner = _make_runner()
-    r2 = runner.with_metadata(group="sweep-1")
+    r2 = runner.with_metadata(run_group="sweep-1")
     assert r2.run_group == "sweep-1"
     assert runner.run_group is None
 
@@ -522,7 +522,7 @@ def test_with_metadata_tags():
 
 def test_with_metadata_partial():
     runner = _make_runner(project="orig", run_group="g1", tags=["t1"])
-    r2 = runner.with_metadata(group="g2")
+    r2 = runner.with_metadata(run_group="g2")
     assert r2.project == "orig"
     assert r2.run_group == "g2"
     assert r2.tags == ["t1"]

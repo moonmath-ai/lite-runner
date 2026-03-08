@@ -75,10 +75,10 @@ class Runner:
     params: list[Param] = field(default_factory=list)
     outputs: list[Output] = field(default_factory=list)
     metrics: list[Metric] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
     env: dict[str, str | None] = field(default_factory=dict)
     project: str | None = None
     run_group: str | None = None
+    tags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
@@ -95,6 +95,9 @@ class Runner:
     # -------------------------------------------------------------------
     # Public param pipeline
     # -------------------------------------------------------------------
+
+    def copy(self) -> Self:
+        return copy.deepcopy(self)
 
     def get_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
@@ -172,17 +175,13 @@ class Runner:
             wandb_project=parsed_args.wandb_project,
         )
 
-        new = copy.copy(self)
-        new.param_values = dict(self.param_values)
-        new.param_sources = dict(self.param_sources)
-
+        new = self.copy()
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
                 new.param_values[name] = val
                 new.param_sources[name] = "cli"
-
-        new.run_flags = run_flags
         new.cli_explicit_flags = explicit_flags
+        new.run_flags = run_flags
         new.cli_parsed = True
         new.defaults_resolved = False
         new.filled = False
@@ -198,23 +197,18 @@ class Runner:
             r1.run()
             r2.run()
         """
-        name_by_dest = {p.dest: p.name for p in self.params}
-        valid_names = {p.name for p in self.params}
+        dest_to_name = {p.dest: p.name for p in self.params}
+        valid_param_names = set(dest_to_name.values())
+        override_params = {dest_to_name.get(k, k): v for k, v in kwargs.items()}
 
-        resolved: dict[str, object] = {}
-        for k, v in kwargs.items():
-            resolved[name_by_dest.get(k, k)] = v
-
-        unknown = set(resolved) - valid_names
+        unknown = set(override_params) - valid_param_names
         if unknown:
             msg = f"Unknown param(s): {', '.join(sorted(unknown))}"
             raise ValueError(msg)
 
-        new = copy.copy(self)
-        new.param_values = dict(self.param_values)
-        new.param_sources = dict(self.param_sources)
-        new.param_values.update(resolved)
-        for name in resolved:
+        new = self.copy()
+        new.param_values.update(override_params)
+        for name in override_params:
             new.param_sources[name] = "override"
         return new
 
@@ -222,17 +216,17 @@ class Runner:
         self,
         *,
         project: str | None = None,
-        group: str | None = None,
+        run_group: str | None = None,
         tags: list[str] | None = None,
     ) -> Runner:
         """Return a copy with updated project, group, or tags."""
-        new = copy.copy(self)
+        new = self.copy()
         if project is not None:
             new.project = project
-        if group is not None:
-            new.run_group = group
+        if run_group is not None:
+            new.run_group = run_group
         if tags is not None:
-            new.tags = list(tags)
+            new.tags = tags
         return new
 
     def resolve_defaults(self) -> Runner:
