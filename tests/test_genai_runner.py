@@ -482,7 +482,7 @@ def test_override_run_skips_prompting(tmp_path):
         patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         patch("genai_runner.runner.questionary") as mock_q,
     ):
         r2.run(interactive=False)
@@ -502,15 +502,15 @@ def test_override_run_skips_prompting(tmp_path):
 def test_with_metadata_project():
     runner = _make_runner()
     r2 = runner.with_metadata(project="my-project")
-    assert r2.wandb_project == "my-project"
-    assert runner.wandb_project is None
+    assert r2.project == "my-project"
+    assert runner.project is None
 
 
 def test_with_metadata_group():
     runner = _make_runner()
     r2 = runner.with_metadata(group="sweep-1")
-    assert r2.group == "sweep-1"
-    assert runner.group is None
+    assert r2.run_group == "sweep-1"
+    assert runner.run_group is None
 
 
 def test_with_metadata_tags():
@@ -521,10 +521,10 @@ def test_with_metadata_tags():
 
 
 def test_with_metadata_partial():
-    runner = _make_runner(wandb_project="orig", group="g1", tags=["t1"])
+    runner = _make_runner(project="orig", run_group="g1", tags=["t1"])
     r2 = runner.with_metadata(group="g2")
-    assert r2.wandb_project == "orig"
-    assert r2.group == "g2"
+    assert r2.project == "orig"
+    assert r2.run_group == "g2"
     assert r2.tags == ["t1"]
 
 
@@ -1074,7 +1074,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
         patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(interactive=False)
 
@@ -1098,14 +1098,14 @@ def test_full_run_explicit_group(tmp_path):
     runner = Runner(
         command=f"{sys.executable} -c \"print('ok')\"",
         params=[],
-        group="my-sweep",
+        run_group="my-sweep",
     )
 
     with (
         patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(interactive=False)
 
@@ -1298,13 +1298,13 @@ def test_full_run_no_wandb(tmp_path):
         params=[],
         metrics=[Metric("val", pattern=r"x=([\d.]+)")],
         tags=["v1"],
-        group="test-group",
+        run_group="test-group",
     )
 
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_wandb=True, interactive=False)
 
@@ -1362,7 +1362,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
         patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(interactive=False)
 
@@ -1393,7 +1393,7 @@ def test_no_wandb_failed_run(tmp_path):
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         pytest.raises(SystemExit, match="1"),
     ):
         runner.run(no_wandb=True, interactive=False)
@@ -1481,7 +1481,7 @@ def test_table_param_logged_to_wandb(tmp_path):
         patch.dict("sys.modules", {"wandb": mock_wb}),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
         patch("genai_runner.runner._log_code_snapshot"),
-        patch("genai_runner.runner._RUNS_DIR", tmp_path / "genai_runs"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(interactive=False)
 

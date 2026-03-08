@@ -21,7 +21,7 @@ runner = Runner(
         Metric("skipped_pct", pattern=r"skipped=([\d.]+)%"),
     ],
     tags=["sweep", "threshold"],
-    group="threshold-sweep",  # groups all runs in W&B UI
+    run_group="threshold-sweep",  # groups all runs in W&B UI
 )
 
 if __name__ == "__main__":

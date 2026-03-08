@@ -38,8 +38,8 @@ from .params import (
     _Unset,
 )
 
-_RUNS_DIR = Path.home() / "genai_runs"
-_PREFIX = "\033[36mgenai-runner:\033[0m"
+RUNS_DIR = Path.home() / "genai_runs"
+LOGGING_PREFIX = "\033[36m" "genai-runner:" "\033[0m"
 
 
 @dataclass
@@ -65,10 +65,10 @@ class Runner:
         params: CLI parameters declared via :class:`Param`.
         outputs: Extra output files declared via :class:`Output`.
         metrics: Regex patterns to extract from stdout via :class:`Metric`.
-        tags: W&B run tags.
+        tags: run tags.
         env: Extra environment variables for the subprocess.
-        wandb_project: W&B project name (default: git repo name).
-        group: W&B run group for sweeps.
+        project: project name (default: git repo name).
+        run_group: run group for sweeps.
     """
 
     command: str | list[str]
@@ -77,8 +77,8 @@ class Runner:
     metrics: list[Metric] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     env: dict[str, str | None] = field(default_factory=dict)
-    wandb_project: str | None = None
-    group: str | None = None  # W&B run group for sweeps
+    project: str | None = None
+    run_group: str | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
@@ -161,9 +161,9 @@ class Runner:
         """Return a copy with updated project, group, or tags."""
         new = copy.copy(self)
         if project is not None:
-            new.wandb_project = project
+            new.project = project
         if group is not None:
-            new.group = group
+            new.run_group = group
         if tags is not None:
             new.tags = list(tags)
         return new
@@ -314,7 +314,7 @@ class Runner:
         gib = 1024 * 1024 * 1024
         minimal_free_space = 1 * gib
         # Find nearest existing ancestor for disk usage check
-        check_path = _RUNS_DIR
+        check_path = RUNS_DIR
         while not check_path.exists():
             check_path = check_path.parent
         if shutil.disk_usage(check_path).free < minimal_free_space:
@@ -323,7 +323,7 @@ class Runner:
                 f" {minimal_free_space / gib:.2f} GiB. Available free space:"
                 f" {shutil.disk_usage(check_path).free / gib:.2f} GiB"
             )
-            print(f"{_PREFIX} Error: {msg}")
+            print(f"{LOGGING_PREFIX} Error: {msg}")
             sys.exit(1)
 
         r = self
@@ -347,7 +347,7 @@ class Runner:
 
         # Git info and project
         git_info = _collect_git_info()
-        project = flags.wandb_project or r.wandb_project or git_info.get("repo")
+        project = flags.wandb_project or r.project or git_info.get("repo")
         if project is None:
             msg = (
                 "Cannot determine project name:"
@@ -370,7 +370,7 @@ class Runner:
         wb_backend = None
         if not flags.dry_run and not flags.no_wandb:
             wb_backend = WandbBackend()
-            wb_backend.init(project, flags.run_name, r.group, r.tags, config)
+            wb_backend.init(project, flags.run_name, r.run_group, r.tags, config)
             run_name = wb_backend.run_name
             run_url = wb_backend.run_url
         elif flags.dry_run:
@@ -382,11 +382,11 @@ class Runner:
 
         # Output dir
         date_str = timestamp.strftime("%Y%m%d_%H%M")
-        if r.group:
-            dir_name = f"{date_str}_{r.group}_{run_name}"
+        if r.run_group:
+            dir_name = f"{date_str}_{r.run_group}_{run_name}"
         else:
             dir_name = f"{date_str}_{run_name}"
-        output_dir = _RUNS_DIR / project / dir_name
+        output_dir = RUNS_DIR / project / dir_name
 
         # Augment config with output_dir and wandb info
         config["meta/output_dir"] = str(output_dir)
@@ -399,24 +399,24 @@ class Runner:
         if flags.dry_run:
             print(f"[dry-run] Project: {project}")
             print(f"[dry-run] Run name: {run_name}")
-            print(f"[dry-run] Group: {r.group}")
+            print(f"[dry-run] Group: {r.run_group}")
             print(f"[dry-run] Tags: {r.tags}")
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
             interpolated_params = r._interpolate_output(param_values, output_dir)
             colored_cmd = r._format_command(interpolated_params, param_sources)
-            print(f"{_PREFIX} Output dir: {output_dir}")
-            print(f"{_PREFIX} Command:\n{colored_cmd}")
+            print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
+            print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
             # Show what files would be logged
             r._print_file_plan(interpolated_params)
             return
 
         # Create output dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"{_PREFIX} Output dir: {output_dir}")
+        print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
 
         # JsonBackend is always active
         json_backend = JsonBackend(output_dir)
-        json_backend.init(project, run_name, r.group, r.tags, config)
+        json_backend.init(project, run_name, r.run_group, r.tags, config)
 
         # Assemble backends
         r._backends = [json_backend]
@@ -443,7 +443,7 @@ class Runner:
         for b in r._backends:
             b.update_config({"meta/full_command": shlex.join(cmd)})
         colored_cmd = r._format_command(interpolated_params, param_sources)
-        print(f"{_PREFIX} Command:\n{colored_cmd}")
+        print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
 
         # Execute
         print("=" * 60)
@@ -535,9 +535,9 @@ class Runner:
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: finish {type(b).__name__} failed: {e}")
 
-        print(f"{_PREFIX} Status: {status} (exit code {exit_code})")
-        print(f"{_PREFIX} Duration: {duration:.1f}s")
-        print(f"{_PREFIX} Output dir: {output_dir}")
+        print(f"{LOGGING_PREFIX} Status: {status} (exit code {exit_code})")
+        print(f"{LOGGING_PREFIX} Duration: {duration:.1f}s")
+        print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
 
     # -----------------------------------------------------------------------
     # CLI parsing
