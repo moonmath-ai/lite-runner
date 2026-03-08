@@ -276,6 +276,7 @@ class Metric:
 @dataclass(frozen=True)
 class RunFlags:
     dry_run: bool | None = None
+    min_free_space_gib: float | None = None
     no_interactive: bool | None = None
     no_wandb: bool | None = None
     project: str | None = None

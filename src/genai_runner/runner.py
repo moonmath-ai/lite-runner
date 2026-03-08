@@ -78,7 +78,6 @@ class Runner:
     project: str | None = None
     run_group: str | None = None
     tags: list[str] = field(default_factory=list)
-    min_free_space_gib: float = 1.0
 
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
@@ -91,7 +90,7 @@ class Runner:
         self.params_by_name: dict[str, Param] = {p.name: p for p in self.params}
         self.param_values: dict[str, object] = {}
         self.param_sources: dict[str, str] = {}
-        self.run_flags: RunFlags | None = None
+        self.run_flags: RunFlags = RunFlags()
         self.cli_parsed: bool = False
         self.defaults_resolved: bool = False
         self.filled: bool = False
@@ -112,6 +111,12 @@ class Runner:
             action="store_true",
             default=None,
             help="Print command and exit",
+        )
+        parser.add_argument(
+            "--min-free-space-gib",
+            type=float,
+            default=None,
+            help="Minimum free disk space in GiB (default: 1.0)",
         )
         parser.add_argument(
             "--no-interactive",
@@ -205,8 +210,6 @@ class Runner:
             if not p.is_fixed
         }
 
-        run_flags = RunFlags.from_namespace(parsed_args)
-
         new = self.copy()
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
@@ -214,7 +217,8 @@ class Runner:
                     val = self.params_by_name[name].cast_nargs(val)
                 new.param_values[name] = val
                 new.param_sources[name] = "cli"
-        new.run_flags = run_flags
+
+        new.run_flags = RunFlags.from_namespace(parsed_args)
         new.cli_parsed = True
         return new
 
@@ -250,7 +254,7 @@ class Runner:
         new = self.copy() if self.defaults_resolved else self.resolve_defaults()
 
         if no_interactive is None:
-            no_interactive = new.run_flags.no_interactive if new.run_flags else None
+            no_interactive = new.run_flags.no_interactive
 
         # Params eligible for prompting: non-fixed, non-bool,
         # not explicitly set via CLI or overrides
@@ -290,10 +294,10 @@ class Runner:
         new.filled = True
         return new
 
-    def check_disk_space(self) -> None:
-        """Exit if the runs directory has less than *min_free_space_gib* free."""
+    def check_disk_space(self, needed_gib: float) -> None:
+        """Exit if the runs directory has less than *needed_gib* free."""
         gib = 1024 * 1024 * 1024
-        needed = self.min_free_space_gib * gib
+        needed = needed_gib * gib
         check_path = RUNS_DIR
         while not check_path.exists():
             check_path = check_path.parent
@@ -301,7 +305,7 @@ class Runner:
         if free < needed:
             print(
                 f"{LOGGING_PREFIX} Error: Not enough free space on device."
-                f" Minimal free space: {self.min_free_space_gib:.2f} GiB."
+                f" Minimal free space: {needed_gib:.2f} GiB."
                 f" Available free space: {free / gib:.2f} GiB",
             )
             sys.exit(1)  # TODO: all sys.exit should occur at run()
@@ -323,22 +327,21 @@ class Runner:
 
         Keyword args override CLI flags (with warnings on contradiction).
         """
-        if min_free_space_gib is not None:
-            self.min_free_space_gib = min_free_space_gib
-        self.check_disk_space()
-
         r = self
         if not r.cli_parsed:
             r = r.parse_cli()
 
-        base_flags = r.run_flags or RunFlags()
-        flags = base_flags.merge(
+        flags = r.run_flags.merge(
             dry_run=dry_run,
+            min_free_space_gib=min_free_space_gib,
             no_interactive=no_interactive,
             no_wandb=no_wandb,
             project=project,
             run_name=run_name,
         )
+
+        if flags.min_free_space_gib is not None:
+            self.check_disk_space(flags.min_free_space_gib)
 
         if not r.defaults_resolved:
             r = r.resolve_defaults()
