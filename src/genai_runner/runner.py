@@ -158,7 +158,6 @@ class Runner:
             new.tags = tags
         return new
 
-
     def override(self, **kwargs: object) -> Runner:
         """Return a copy with override values applied.
 
@@ -695,9 +694,14 @@ class Runner:
             if val is None or val is UNSET or p.type == "bool":
                 continue
             if isinstance(val, list):
-                result[p.name] = [str(v).replace("$output", out) if isinstance(v, str) else v for v in val]
+                result[p.name] = [
+                    str(v).replace("$output", out) if isinstance(v, str) else v
+                    for v in val
+                ]
             else:
-                result[p.name] = str(val).replace("$output", out) if isinstance(val, str) else val
+                result[p.name] = (
+                    str(val).replace("$output", out) if isinstance(val, str) else val
+                )
         return result
 
     # -----------------------------------------------------------------------
