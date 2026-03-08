@@ -238,10 +238,7 @@ class Runner:
 
         Params already set (by CLI or override) are not changed.
         """
-        new = copy.copy(self)
-        new.param_values = dict(self.param_values)
-        new.param_sources = dict(self.param_sources)
-
+        new = self.copy()
         for p in self.params:
             if p.name in new.param_values:
                 continue
@@ -256,13 +253,6 @@ class Runner:
                     p.default() if callable(p.default) else p.default
                 )
                 new.param_sources[p.name] = "default"
-
-        # Cast multi-value args to per-element types
-        for p in self.params:
-            val = new.param_values.get(p.name)
-            if p.nargs is not None and val is not None and val is not UNSET:
-                new.param_values[p.name] = _cast_nargs(val, p.type_list)
-
         new.defaults_resolved = True
         return new
 
