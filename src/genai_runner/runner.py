@@ -14,7 +14,6 @@ import threading
 import time
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, fields, replace
-from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import IO, Self, TextIO
 
@@ -122,7 +121,7 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
-        reserved = {f.name for f in dataclass_fields(RunFlags)}
+        reserved = {f.name for f in fields(RunFlags)}
         for p in self.params:
             if p.name in reserved:
                 msg = f"Param name {p.name!r} conflicts with built-in flag"
