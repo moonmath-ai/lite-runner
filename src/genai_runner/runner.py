@@ -266,16 +266,10 @@ class Runner:
         In non-interactive mode, raises SystemExit if required params
         are missing.  Auto-calls :meth:`resolve_defaults` if needed.
         """
-        r = self
-        if not r.defaults_resolved:
-            r = r.resolve_defaults()
+        new = self.copy() if self.defaults_resolved else self.resolve_defaults()
 
         if interactive is None:
-            interactive = r.run_flags.interactive if r.run_flags else True
-
-        new = copy.copy(r)
-        new.param_values = dict(r.param_values)
-        new.param_sources = dict(r.param_sources)
+            interactive = new.run_flags.interactive if new.run_flags else True
 
         # Params eligible for prompting: non-fixed, non-bool,
         # not explicitly set via CLI or overrides
@@ -284,11 +278,11 @@ class Runner:
             for p in self.params
             if not p.is_fixed
             and p.prompt
-            and p.type != "bool"
-            and r.param_sources.get(p.name) not in ("cli", "override")
+            and p.type != "bool"  # TODO: also ask for bool params
+            and new.param_sources.get(p.name) not in ("cli", "override")
         ]
 
-        missing = [p for p in promptable if p.name not in r.param_values]
+        missing = [p for p in promptable if p.name not in new.param_values]
 
         if not interactive:
             if missing:
@@ -298,7 +292,7 @@ class Runner:
                     file=sys.stderr,
                 )
                 print(
-                    "Run without -n for interactive mode,"
+                    "Run without --no-interactive for interactive mode,"
                     " or pass them on the command line.",
                     file=sys.stderr,
                 )
