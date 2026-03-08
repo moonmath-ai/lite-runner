@@ -5,18 +5,13 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime
-import gzip
 import os
-import re
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
-import tarfile
 import threading
 import time
-import zipfile
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
@@ -25,14 +20,24 @@ from typing import IO, Self, TextIO
 
 import git
 
-from .backends import DryRunBackend, JsonBackend, LogBackend, WandbBackend
+from .backends import (
+    DryRunBackend,
+    JsonBackend,
+    LogBackend,
+    WandbBackend,
+    extract_metrics,
+    log_code_snapshot,
+    log_extra_outputs,
+    log_files,
+    log_run_logs,
+    log_table_params,
+)
 from .params import (
     UNSET,
     Metric,
     Output,
     Param,
     RunFlags,
-    _log_as_from_type,
 )
 
 RUNS_DIR = Path.home() / "genai_runs"
@@ -415,7 +420,7 @@ class Runner:
 
         # Save code snapshot (git archive + dirty diff)
         try:
-            _log_code_snapshot(backend_list, output_dir, git_info)
+            log_code_snapshot(backend_list, output_dir, git_info)
         except Exception as e:  # noqa: BLE001
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
@@ -423,10 +428,10 @@ class Runner:
         interpolated_params = r._interpolate_output(r.param_values, output_dir)
 
         # Log table params (prompt, etc.)
-        r._log_table_params(backend_list, r.param_values)
+        log_table_params(backend_list, r.params, r.param_values)
 
         # Log input files (log_when == "before")
-        r._log_files(backend_list, interpolated_params, when="before")
+        log_files(backend_list, r.params, interpolated_params, when="before")
 
         # Build command
         cmd = r._build_command(interpolated_params)
@@ -492,19 +497,19 @@ class Runner:
         steps: list[tuple[str, object]] = [
             (
                 "extract metrics",
-                lambda: self._extract_metrics(backends, stdout_text),
+                lambda: extract_metrics(backends, self.metrics, stdout_text),
             ),
             (
                 "log output files",
-                lambda: self._log_files(backends, param_values, when="after"),
+                lambda: log_files(backends, self.params, param_values, when="after"),
             ),
             (
                 "log extra outputs",
-                lambda: self._log_extra_outputs(backends, output_dir),
+                lambda: log_extra_outputs(backends, self.outputs, output_dir),
             ),
             (
                 "log run logs",
-                lambda: self._log_run_logs(backends, output_dir),
+                lambda: log_run_logs(backends, output_dir),
             ),
             (
                 "tag run status",
@@ -773,174 +778,11 @@ class Runner:
 
         return proc.returncode, duration, "".join(stdout_lines), aborted
 
-    # -----------------------------------------------------------------------
-    # Table logging (prominent display of prompts etc.)
-    # -----------------------------------------------------------------------
-
-    def _log_table_params(self, backends: list[LogBackend], resolved_params: dict) -> None:
-        """Log params marked with table=True as a W&B Table."""
-        rows = [
-            [p.name, resolved_params.get(p.name)]
-            for p in self.params
-            if p.table and resolved_params.get(p.name) not in (None, UNSET)
-        ]
-        if rows:
-            for b in backends:
-                b.log_table("params", ["name", "value"], rows)
-
-    # -----------------------------------------------------------------------
-    # File logging
-    # -----------------------------------------------------------------------
-
-    def _log_files(self, backends: list[LogBackend], param_values: dict, when: str) -> None:
-        for p in self.params:
-            if p.log_when != when:
-                continue
-            val = param_values.get(p.name)
-            if val is None or val is UNSET:
-                continue
-            values = val if isinstance(val, list) else [val]
-            for v, t in zip(values, p.type_list, strict=True):
-                log_as = _log_as_from_type(t)
-                if log_as is None:
-                    continue
-                path = Path(str(v))
-                if not path.exists():
-                    msg = f"File not found: {path} (param '{p.name}')"
-                    raise FileNotFoundError(msg)
-                for b in backends:
-                    b.log_file(path, log_as, key=p.name)
-
-    def _log_extra_outputs(self, backends: list[LogBackend], output_dir: Path) -> None:
-        out = str(output_dir)
-        seen_zips: set[str] = set()
-        for o in self.outputs:
-            raw_path = o.path.replace("$output", out)
-            is_glob = any(c in raw_path for c in ("*", "?", "["))
-            path = Path(raw_path)
-
-            if is_glob:
-                base, pattern = _split_glob(raw_path)
-                matches = sorted(base.glob(pattern))
-            elif path.is_dir():
-                if o.log_as != "zip":
-                    print(
-                        f"[genai_runner] Warning: {raw_path} is a directory,"
-                        " uploading each file individually"
-                        " (use log_as='zip' to zip instead)"
-                    )
-                base = path
-                matches = sorted(path.rglob("*"))
-            else:
-                _log_single_output(backends, path, o, out)
-                continue
-
-            # Glob or directory: upload matches
-            if not matches:
-                print(
-                    f"[genai_runner] Warning: glob '{o.path}'"
-                    " matched no files, skipping"
-                )
-                continue
-
-            label = o.name or base.name or "output"
-            if o.log_as == "zip":
-                if label in seen_zips:
-                    msg = (
-                        f"Duplicate zip label '{label}':"
-                        " set Output(name=...) to disambiguate"
-                    )
-                    raise ValueError(msg)
-                seen_zips.add(label)
-                _zip_and_upload(backends, matches, base, output_dir, label)
-            else:
-                for m in matches:
-                    if m.is_file():
-                        for b in backends:
-                            b.log_file(m, o.log_as, key=label)
-
-    def _log_run_logs(self, backends: list[LogBackend], output_dir: Path) -> None:
-        files = [
-            str(output_dir / name)
-            for name in ("run.log", "stdout.log", "stderr.log")
-            if (output_dir / name).exists()
-        ]
-        if files:
-            for b in backends:
-                b.log_artifact("logs", "log", files)
-
-    # -----------------------------------------------------------------------
-    # Metric extraction
-    # -----------------------------------------------------------------------
-
-    def _extract_metrics(self, backends: list[LogBackend], stdout_text: str) -> None:
-        casters = {"float": float, "int": int}
-        for m in self.metrics:
-            matches = re.findall(m.pattern, stdout_text)
-            if not matches:
-                continue
-            raw = matches[-1]  # last match wins
-            caster = casters.get(m.type)
-            if caster is not None:
-                try:
-                    val = caster(raw)
-                except ValueError:
-                    val = raw
-            else:
-                val = raw
-            for b in backends:
-                b.set_metric(m.name, val)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _split_glob(path_str: str) -> tuple[Path, str]:
-    """Split 'dir/sub/**/*.png' into (Path('dir/sub'), '**/*.png')."""
-    parts = Path(path_str).parts
-    for i, part in enumerate(parts):
-        if any(c in part for c in ("*", "?", "[")):
-            base = Path(*parts[:i]) if i > 0 else Path()
-            pattern = str(Path(*parts[i:]))
-            return base, pattern
-    # No glob chars found (shouldn't happen if caller checked)
-    return Path(path_str).parent, Path(path_str).name
-
-
-def _log_single_output(
-    backends: list[LogBackend], path: Path, o: Output, out: str
-) -> None:
-    """Handle a single (non-glob, non-directory) output file."""
-    if not path.exists():
-        msg = f"Output file not found: {path}"
-        raise FileNotFoundError(msg)
-    if o.copy_to:
-        dst = Path(o.copy_to.replace("$output", out))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, dst)
-        path = dst
-    key = o.name or path.stem
-    for b in backends:
-        b.log_file(path, o.log_as, key=key)
-
-
-def _zip_and_upload(
-    backends: list[LogBackend],
-    matches: list[Path],
-    base: Path,
-    output_dir: Path,
-    label: str,
-) -> None:
-    """Zip matched files and upload as artifact."""
-    zip_path = output_dir / f"{label}.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for m in matches:
-            if m.is_file():
-                zf.write(m, m.relative_to(base))
-    for b in backends:
-        b.log_file(zip_path, "artifact", key=label)
 
 
 def _collect_git_info() -> dict:
@@ -956,63 +798,3 @@ def _collect_git_info() -> dict:
     }
 
 
-def _log_code_snapshot(
-    backends: list[LogBackend], output_dir: Path, git_info: dict
-) -> None:
-    """Save a full code snapshot: git archive + dirty diff."""
-    if not git_info:
-        return
-
-    try:
-        repo = git.Repo(search_parent_directories=True)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
-        return
-
-    code_dir = output_dir / "code"
-    code_dir.mkdir(exist_ok=True)
-
-    # git archive: full snapshot of tracked files at HEAD
-    archive_path = code_dir / "source.tar.gz"
-    tar_path = code_dir / "source.tar"
-    with tar_path.open("wb") as f:
-        repo.archive(f, format="tar")
-
-    # Archive each submodule and append into the tar
-    for submodule in repo.submodules:
-        try:
-            sub_repo = submodule.module()
-        except git.InvalidGitRepositoryError:
-            continue
-        sub_tar = code_dir / "sub.tar"
-        with sub_tar.open("wb") as f:
-            sub_repo.archive(f, format="tar", prefix=f"{submodule.path}/")
-        with (
-            tarfile.open(tar_path, "a") as main_tf,
-            tarfile.open(sub_tar) as sub_tf,
-        ):
-            for member in sub_tf:
-                main_tf.addfile(
-                    member,
-                    sub_tf.extractfile(member) if member.isfile() else None,
-                )
-        sub_tar.unlink()
-
-    # Compress the combined tar
-    with tar_path.open("rb") as f_in, gzip.open(archive_path, "wb") as f_out:
-        f_out.writelines(f_in)
-    tar_path.unlink()
-
-    # Dirty diff (staged + unstaged vs HEAD, including submodules)
-    diff_path = None
-    if git_info.get("dirty"):
-        diff_text = repo.git.diff("HEAD", submodule="diff")
-        if diff_text:
-            diff_path = code_dir / "dirty.patch"
-            diff_path.write_text(diff_text)
-
-    # Record in all backends
-    files = [str(archive_path)]
-    if diff_path and diff_path.exists():
-        files.append(str(diff_path))
-    for b in backends:
-        b.log_artifact("code", "code", files)

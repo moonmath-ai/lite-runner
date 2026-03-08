@@ -11,8 +11,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from genai_runner import UNSET, JsonBackend, Metric, Output, Param, Runner
+from genai_runner.backends import (
+    _split_glob,
+    extract_metrics,
+    log_extra_outputs,
+    log_files,
+    log_table_params,
+)
 from genai_runner.params import RunFlags, _log_as_from_type
-from genai_runner.runner import _collect_git_info, _split_glob
+from genai_runner.runner import _collect_git_info
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -486,7 +493,7 @@ def test_override_run_skips_prompting(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         patch("genai_runner.params.questionary") as mock_q,
     ):
@@ -753,10 +760,8 @@ def test_interpolate_preserves_bool(tmp_path):
 
 
 def test_log_files_skips_unset(tmp_path):
-    """_log_files skips params whose value is UNSET."""
-    runner = _make_runner(
-        params=[Param("img", type="path-image")],
-    )
+    """log_files skips params whose value is UNSET."""
+    params = [Param("img", type="path-image")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -765,7 +770,7 @@ def test_log_files_skips_unset(tmp_path):
         config={"meta/output_dir": str(tmp_path)},
     )
     # Should not raise or try to upload
-    runner._log_files([json_backend], {"img": UNSET}, when="before")
+    log_files([json_backend], params, {"img": UNSET}, when="before")
     assert json_backend.files_logged == []
 
 
@@ -884,42 +889,38 @@ def test_build_type_list_from_cli():
 
 
 def test_metric_float():
-    runner = Runner(
-        command="echo", metrics=[Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
-    )
+    metrics = [Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._extract_metrics([json_backend], "some output\nskipped=32.8%\ndone")
+    extract_metrics([json_backend], metrics, "some output\nskipped=32.8%\ndone")
     assert json_backend.metrics["skip_pct"] == 32.8
 
 
 def test_metric_str():
-    runner = Runner(
-        command="echo", metrics=[Metric("status", pattern=r"final: (\w+)", type="str")]
-    )
+    metrics = [Metric("status", pattern=r"final: (\w+)", type="str")]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._extract_metrics([json_backend], "final: completed")
+    extract_metrics([json_backend], metrics, "final: completed")
     assert json_backend.metrics["status"] == "completed"
 
 
 def test_metric_last_match_wins():
-    runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
+    metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._extract_metrics([json_backend], "x=1.0\nx=2.0\nx=3.0")
+    extract_metrics([json_backend], metrics, "x=1.0\nx=2.0\nx=3.0")
     assert json_backend.metrics["val"] == 3.0
 
 
 def test_metric_no_match():
-    runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
+    metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._extract_metrics([json_backend], "no matches here")
+    extract_metrics([json_backend], metrics, "no matches here")
     assert "val" not in json_backend.metrics
 
 
@@ -1080,7 +1081,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -1109,7 +1110,7 @@ def test_run_project_kwarg_flows_to_backend(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True, project="custom-proj")
@@ -1132,7 +1133,7 @@ def test_full_run_explicit_group(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -1152,10 +1153,7 @@ def test_log_extra_outputs_glob(tmp_path):
     (tmp_path / "frames" / "002.png").write_text("b")
     (tmp_path / "frames" / "skip.txt").write_text("c")
 
-    runner = Runner(
-        command="echo",
-        outputs=[Output("$output/frames/*.png", log_as="image")],
-    )
+    outputs = [Output("$output/frames/*.png", log_as="image")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1163,7 +1161,7 @@ def test_log_extra_outputs_glob(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner._log_extra_outputs([json_backend], tmp_path)
+    log_extra_outputs([json_backend], outputs, tmp_path)
     # Should log 2 png files, not the txt
     logged = [f for f in json_backend.files_logged if f.get("log_as") == "image"]
     assert len(logged) == 2
@@ -1175,10 +1173,7 @@ def test_log_extra_outputs_glob_zip(tmp_path):
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
     (tmp_path / "debug" / "b.pt").write_text("tensor2")
 
-    runner = Runner(
-        command="echo",
-        outputs=[Output("$output/debug/*.pt", log_as="zip")],
-    )
+    outputs = [Output("$output/debug/*.pt", log_as="zip")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1186,7 +1181,7 @@ def test_log_extra_outputs_glob_zip(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner._log_extra_outputs([json_backend], tmp_path)
+    log_extra_outputs([json_backend], outputs, tmp_path)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -1202,10 +1197,7 @@ def test_log_extra_outputs_dir_zip(tmp_path):
     (tmp_path / "debug" / "sub").mkdir()
     (tmp_path / "debug" / "sub" / "b.pt").write_text("tensor2")
 
-    runner = Runner(
-        command="echo",
-        outputs=[Output("$output/debug", log_as="zip")],
-    )
+    outputs = [Output("$output/debug", log_as="zip")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1213,7 +1205,7 @@ def test_log_extra_outputs_dir_zip(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner._log_extra_outputs([json_backend], tmp_path)
+    log_extra_outputs([json_backend], outputs, tmp_path)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -1225,10 +1217,7 @@ def test_log_extra_outputs_dir_zip(tmp_path):
 
 def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
     """Glob with no matches prints a warning."""
-    runner = Runner(
-        command="echo",
-        outputs=[Output("$output/nope/*.png", log_as="image")],
-    )
+    outputs = [Output("$output/nope/*.png", log_as="image")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1236,7 +1225,7 @@ def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner._log_extra_outputs([json_backend], tmp_path)
+    log_extra_outputs([json_backend], outputs, tmp_path)
     assert "matched no files" in capsys.readouterr().out
 
 
@@ -1244,10 +1233,7 @@ def test_log_extra_outputs_single_file(tmp_path):
     """Non-glob single file still works (regression)."""
     (tmp_path / "meta.json").write_text("{}")
 
-    runner = Runner(
-        command="echo",
-        outputs=[Output("$output/meta.json", log_as="artifact")],
-    )
+    outputs = [Output("$output/meta.json", log_as="artifact")]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1255,7 +1241,7 @@ def test_log_extra_outputs_single_file(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner._log_extra_outputs([json_backend], tmp_path)
+    log_extra_outputs([json_backend], outputs, tmp_path)
     logged = [f for f in json_backend.files_logged if f.get("log_as") == "artifact"]
     assert len(logged) == 1
 
@@ -1266,13 +1252,10 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
     (tmp_path / "debug" / "a.pt").write_text("x")
     (tmp_path / "debug" / "b.png").write_text("y")
 
-    runner = Runner(
-        command="echo",
-        outputs=[
-            Output("$output/debug/*.pt", log_as="zip"),
-            Output("$output/debug/*.png", log_as="zip"),
-        ],
-    )
+    outputs = [
+        Output("$output/debug/*.pt", log_as="zip"),
+        Output("$output/debug/*.png", log_as="zip"),
+    ]
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -1281,7 +1264,7 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
         config={"meta/output_dir": str(tmp_path)},
     )
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        runner._log_extra_outputs([json_backend], tmp_path)
+        log_extra_outputs([json_backend], outputs, tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1358,7 +1341,7 @@ def test_full_run_no_wandb(tmp_path):
 
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_wandb=True, no_interactive=True)
@@ -1415,7 +1398,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -1445,7 +1428,7 @@ def test_no_wandb_failed_run(tmp_path):
 
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         pytest.raises(SystemExit, match="1"),
     ):
@@ -1463,11 +1446,11 @@ def test_no_wandb_failed_run(tmp_path):
 
 def test_extract_metrics_with_json_backend():
     """Metrics are extracted into JsonBackend."""
-    runner = Runner(command="echo", metrics=[Metric("val", pattern=r"x=([\d.]+)")])
+    metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._extract_metrics([json_backend], "x=3.14")
+    extract_metrics([json_backend], metrics, "x=3.14")
     assert json_backend.metrics["val"] == 3.14
 
 
@@ -1478,13 +1461,11 @@ def test_extract_metrics_with_json_backend():
 
 def test_table_param_logged_to_json_backend():
     """Params with table=True are logged via log_table to JsonBackend."""
-    runner = _make_runner(
-        params=[Param("prompt", table=True), Param("seed", type="int", default=42)],
-    )
+    params = [Param("prompt", table=True), Param("seed", type="int", default=42)]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._log_table_params([json_backend], {"prompt": "a cat", "seed": 42})
+    log_table_params([json_backend], params, {"prompt": "a cat", "seed": 42})
     table = json_backend.tables["params"]
     assert table["columns"] == ["name", "value"]
     assert ["prompt", "a cat"] in table["data"]
@@ -1494,13 +1475,11 @@ def test_table_param_logged_to_json_backend():
 
 def test_table_param_skips_unset():
     """UNSET and None table params are excluded from the table."""
-    runner = _make_runner(
-        params=[Param("prompt", table=True), Param("neg", table=True)],
-    )
+    params = [Param("prompt", table=True), Param("neg", table=True)]
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner._log_table_params([json_backend], {"prompt": "a cat", "neg": None})
+    log_table_params([json_backend], params, {"prompt": "a cat", "neg": None})
     table = json_backend.tables["params"]
     assert len(table["data"]) == 1
     assert table["data"][0] == ["prompt", "a cat"]
@@ -1508,9 +1487,9 @@ def test_table_param_skips_unset():
 
 def test_table_param_no_table_params_skips():
     """No log_table call when no params have table=True."""
-    runner = _make_runner(params=[Param("seed", type="int", default=42)])
+    params = [Param("seed", type="int", default=42)]
     backend = MagicMock()
-    runner._log_table_params([backend], {"seed": 42})
+    log_table_params([backend], params, {"seed": 42})
     backend.log_table.assert_not_called()
 
 
@@ -1534,7 +1513,7 @@ def test_table_param_logged_to_wandb(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.backends.log_code_snapshot"),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
