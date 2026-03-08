@@ -36,17 +36,11 @@ class LogBackend(Protocol):
 
     def log_file(self, path: Path, log_as: str, key: str) -> None: ...
 
-    def log_artifact(self, name: str, type: str, files: list[str]) -> None: ...
-
     def set_metric(self, name: str, value: object) -> None: ...
 
     def set_summary(self, summary: dict) -> None: ...
 
     def set_tags(self, tags: list[str]) -> None: ...
-
-    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        """Log a table of values for prominent display."""
-        ...
 
     def finish(self, exit_code: int) -> None: ...
 
@@ -83,7 +77,9 @@ class WandbBackend:
         self.run.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
-        if log_as == "video":
+        if log_as == "artifact":
+            self.run.log_artifact(path, name=f"{key}-{self.run.id}", type=key)
+        elif log_as == "video":
             fmt = path.suffix.lstrip(".")
             self.run.log({key: wandb.Video(str(path), format=fmt)})
         elif log_as == "image":
@@ -91,16 +87,7 @@ class WandbBackend:
         elif log_as == "text":
             text = path.read_text(errors="replace")
             self.run.log({key: wandb.Html(f"<pre>{text}</pre>")})
-        elif log_as == "artifact":
-            artifact = wandb.Artifact(f"{key}-{self.run.id}", type=log_as)
-            artifact.add_file(str(path))
-            self.run.log_artifact(artifact)
-
-    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        artifact = wandb.Artifact(f"{name}-{self.run.id}", type=type)
-        for f in files:
-            artifact.add_file(f)
-        self.run.log_artifact(artifact)
+        assert False, f"Invalid log_as: {log_as}"
 
     def set_metric(self, name: str, value: object) -> None:
         self.run.summary[name] = value
@@ -110,10 +97,6 @@ class WandbBackend:
 
     def set_tags(self, tags: list[str]) -> None:
         self.run.tags = tags
-
-    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        table = wandb.Table(columns=columns, data=data)
-        self.run.log({key: table})
 
     def finish(self, exit_code: int) -> None:
         self.run.finish(exit_code=exit_code)
@@ -140,7 +123,6 @@ class JsonBackend:
         self.metrics = {}
         self.summary = {}
         self.files_logged = []
-        self.tables = {}
 
     @property
     def run_name(self) -> str:
@@ -152,9 +134,6 @@ class JsonBackend:
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         self.files_logged.append({"path": str(path), "log_as": log_as, "key": key})
 
-    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        self.files_logged.append({"type": type, "files": files})
-
     def set_metric(self, name: str, value: object) -> None:
         self.metrics[name] = value
 
@@ -164,12 +143,6 @@ class JsonBackend:
     def set_tags(self, tags: list[str]) -> None:
         self.metadata["tags"] = tags
 
-    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        self.tables[key] = {
-            "columns": columns,
-            "data": data,
-        }
-
     def finish(self, exit_code: int) -> None:
         output_dir = Path(self.config["meta/output_dir"])
         run_info = {
@@ -178,7 +151,6 @@ class JsonBackend:
             "metrics": self.metrics,
             "summary": self.summary,
             "files_logged": self.files_logged,
-            "tables": self.tables,
             "exit_code": exit_code,
         }
         (output_dir / "run_info.json").write_text(
@@ -210,9 +182,6 @@ class DryRunBackend:
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         print(f"[dry-run] Logging file: {path} as {log_as} as {key}")
 
-    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        print(f"[dry-run] Logging artifact: {name} as {type} with files: {files}")
-
     def set_metric(self, name: str, value: object) -> None:
         print(f"[dry-run] Setting metric: {name} to {value}")
 
@@ -221,11 +190,6 @@ class DryRunBackend:
 
     def set_tags(self, tags: list[str]) -> None:
         print(f"[dry-run] Setting tags: {tags}")
-
-    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        print(
-            f"[dry-run] Logging table: {key} with columns: {columns} and data: {data}"
-        )
 
     def finish(self, exit_code: int) -> None:
         print(f"[dry-run] Finishing with exit code: {exit_code}")
@@ -258,24 +222,6 @@ def extract_metrics(
             val = raw
         for b in backends:
             b.set_metric(m.name, val)
-
-
-def log_table_params(
-    backends: list[LogBackend],
-    params: list[Param],
-    resolved_params: dict,
-) -> None:
-    """Log params marked with table=True as a table."""
-    from .params import UNSET
-
-    rows = [
-        [p.name, resolved_params.get(p.name)]
-        for p in params
-        if p.table and resolved_params.get(p.name) not in (None, UNSET)
-    ]
-    if rows:
-        for b in backends:
-            b.log_table("params", ["name", "value"], rows)
 
 
 def log_files(
@@ -364,9 +310,9 @@ def log_run_logs(backends: list[LogBackend], output_dir: Path) -> None:
         for name in ("run.log", "stdout.log", "stderr.log")
         if (output_dir / name).exists()
     ]
-    if files:
+    for file in files:
         for b in backends:
-            b.log_artifact("logs", "log", files)
+            b.log_file(file, "text", file.name)
 
 
 def log_single_output(
@@ -450,21 +396,17 @@ def log_code_snapshot(
     with tar_path.open("rb") as f_in, gzip.open(archive_path, "wb") as f_out:
         f_out.writelines(f_in)
     tar_path.unlink()
+    for b in backends:
+        b.log_file(archive_path, "artifact", "code")
 
     # Dirty diff (staged + unstaged vs HEAD, including submodules)
-    diff_path = None
     if git_info.get("dirty"):
         diff_text = repo.git.diff("HEAD", submodule="diff")
-        if diff_text:
-            diff_path = code_dir / "dirty.patch"
-            diff_path.write_text(diff_text)
-
-    # Record in all backends
-    files = [str(archive_path)]
-    if diff_path and diff_path.exists():
-        files.append(str(diff_path))
-    for b in backends:
-        b.log_artifact("code", "code", files)
+        assert diff_text
+        diff_path = code_dir / "dirty.patch"
+        diff_path.write_text(diff_text)
+        for b in backends:
+            b.log_file(diff_path, "artifact", "code-diff")
 
 
 def _split_glob(path_str: str) -> tuple[Path, str]:

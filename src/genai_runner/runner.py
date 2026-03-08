@@ -30,7 +30,6 @@ from .backends import (
     log_extra_outputs,
     log_files,
     log_run_logs,
-    log_table_params,
 )
 from .params import (
     UNSET,
@@ -460,9 +459,6 @@ class Runner:
 
         # Interpolate $output in param values
         interpolated_params = _interpolate_output(r.param_values, output_dir)
-
-        # Log table params (prompt, etc.)
-        log_table_params(backend_list, r.params, r.param_values)
 
         # Log input files (log_when == "before")
         log_files(backend_list, r.params, interpolated_params, when="before")

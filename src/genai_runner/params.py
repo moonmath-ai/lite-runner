@@ -83,9 +83,6 @@ class Param:
         prompt: If False, skip interactive prompting and use the
             default value.  The param still accepts CLI flags and
             is logged normally.  Requires a default.
-        table: If True, log the resolved value in a W&B Table for
-            prominent visibility on the run page.  Useful for
-            prompts and other long text params.
     """
 
     name: str
@@ -98,7 +95,6 @@ class Param:
     labels: list[str] | None = None
     log_when: str | None = None
     prompt: bool = True
-    table: bool = False
 
     def __post_init__(self) -> None:
         self._dest = self.name.replace("-", "_")

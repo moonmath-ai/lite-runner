@@ -974,37 +974,6 @@ def test_no_wandb_failed_run(tmp_path):
     assert "failed" in run_info["metadata"]["tags"]
 
 
-def test_table_param_logged_to_wandb(tmp_path):
-    """Full integration: table=True param creates a wandb.Table in run."""
-    mock_wb = MagicMock()
-    wb_run = _mock_wb_run()
-    mock_wb.init.return_value = wb_run
-    mock_wb.Artifact = MagicMock()
-    mock_table = MagicMock()
-    mock_wb.Table.return_value = mock_table
-
-    runner = Runner(
-        command=f"{sys.executable} -c \"print('ok')\"",
-        params=[
-            Param("prompt", default="a cat", table=True),
-            Param("seed", type="int", default=42),
-        ],
-    )
-
-    with (
-        patch("genai_runner.backends.wandb", mock_wb),
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
-    ):
-        runner.run(no_interactive=True)
-
-    mock_wb.Table.assert_called_once_with(
-        columns=["name", "value"], data=[["prompt", "a cat"]]
-    )
-    wb_run.log.assert_any_call({"params": mock_table})
-
-
 # ---------------------------------------------------------------------------
 # Source tracking
 # ---------------------------------------------------------------------------

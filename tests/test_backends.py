@@ -2,19 +2,16 @@
 
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from genai_runner import JsonBackend, Metric, Output, Param, UNSET
+from genai_runner import UNSET, JsonBackend, Metric, Output, Param
 from genai_runner.backends import (
     _split_glob,
     extract_metrics,
     log_extra_outputs,
     log_files,
-    log_table_params,
 )
-
 
 # ---------------------------------------------------------------------------
 # _split_glob
@@ -236,40 +233,3 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
         log_extra_outputs([json_backend], outputs, tmp_path)
 
 
-# ---------------------------------------------------------------------------
-# Table param logging
-# ---------------------------------------------------------------------------
-
-
-def test_table_param_logged_to_json_backend():
-    """Params with table=True are logged via log_table to JsonBackend."""
-    params = [Param("prompt", table=True), Param("seed", type="int", default=42)]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    log_table_params([json_backend], params, {"prompt": "a cat", "seed": 42})
-    table = json_backend.tables["params"]
-    assert table["columns"] == ["name", "value"]
-    assert ["prompt", "a cat"] in table["data"]
-    # seed has table=False, should NOT appear
-    assert all(row[0] != "seed" for row in table["data"])
-
-
-def test_table_param_skips_unset():
-    """UNSET and None table params are excluded from the table."""
-    params = [Param("prompt", table=True), Param("neg", table=True)]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    log_table_params([json_backend], params, {"prompt": "a cat", "neg": None})
-    table = json_backend.tables["params"]
-    assert len(table["data"]) == 1
-    assert table["data"][0] == ["prompt", "a cat"]
-
-
-def test_table_param_no_table_params_skips():
-    """No log_table call when no params have table=True."""
-    params = [Param("seed", type="int", default=42)]
-    backend = MagicMock()
-    log_table_params([backend], params, {"seed": 42})
-    backend.log_table.assert_not_called()
