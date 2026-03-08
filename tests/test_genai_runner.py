@@ -19,7 +19,7 @@ from genai_runner.backends import (
     log_table_params,
 )
 from genai_runner.params import _log_as_from_type
-from genai_runner.runner import RunFlags, _collect_git_info
+from genai_runner.runner import RunFlags, _collect_git_info, _interpolate_output
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -741,20 +741,13 @@ def test_config_logs_unset_as_marker():
 
 def test_interpolate_preserves_unset(tmp_path):
     """UNSET values pass through interpolation unchanged."""
-    runner = _make_runner(params=[Param("out", value="$output/x.mp4")])
-    result = runner._interpolate_output({"out": UNSET}, tmp_path)
+    result = _interpolate_output({"out": UNSET}, tmp_path)
     assert result["out"] is UNSET
 
 
 def test_interpolate_preserves_bool(tmp_path):
     """Bool values are not stringified by interpolation."""
-    runner = _make_runner(
-        params=[
-            Param("on", type="bool", value=True),
-            Param("off", type="bool", value=False),
-        ],
-    )
-    result = runner._interpolate_output({"on": True, "off": False}, tmp_path)
+    result = _interpolate_output({"on": True, "off": False}, tmp_path)
     assert result["on"] is True
     assert result["off"] is False
 
@@ -780,28 +773,25 @@ def test_log_files_skips_unset(tmp_path):
 
 
 def test_interpolate_replaces_output_in_string(tmp_path):
-    runner = _make_runner(params=[Param("out", value="$output/video.mp4")])
-    result = runner._interpolate_output({"out": "$output/video.mp4"}, tmp_path)
+    result = _interpolate_output({"out": "$output/video.mp4"}, tmp_path)
     assert result["out"] == f"{tmp_path}/video.mp4"
 
 
 def test_interpolate_replaces_output_in_list(tmp_path):
-    runner = _make_runner(params=[Param("img", value=["$output/img.jpg", 0, 0.8])])
-    result = runner._interpolate_output({"img": ["$output/img.jpg", 0, 0.8]}, tmp_path)
+    result = _interpolate_output({"img": ["$output/img.jpg", 0, 0.8]}, tmp_path)
     assert result["img"] == [f"{tmp_path}/img.jpg", 0, 0.8]
 
 
 def test_interpolate_non_output_unchanged(tmp_path):
-    runner = _make_runner(params=[Param("config", value="/etc/config.toml")])
-    result = runner._interpolate_output({"config": "/etc/config.toml"}, tmp_path)
+    result = _interpolate_output({"config": "/etc/config.toml"}, tmp_path)
     assert result["config"] == "/etc/config.toml"
 
 
 def test_interpolate_preserves_resolved_params(tmp_path):
-    runner = _make_runner(params=[Param("out", value="$output/video.mp4")])
-    result = runner._interpolate_output(
+    result = _interpolate_output(
         {"out": "$output/video.mp4", "prompt": "a cat", "seed": 42}, tmp_path
     )
+    assert result["out"] == f"{tmp_path}/video.mp4"
     assert result["prompt"] == "a cat"
     assert result["seed"] == 42
 

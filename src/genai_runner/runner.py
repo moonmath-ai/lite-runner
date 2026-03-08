@@ -460,7 +460,7 @@ class Runner:
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
         # Interpolate $output in param values
-        interpolated_params = r._interpolate_output(r.param_values, output_dir)
+        interpolated_params = _interpolate_output(r.param_values, output_dir)
 
         # Log table params (prompt, etc.)
         log_table_params(backend_list, r.params, r.param_values)
@@ -576,29 +576,6 @@ class Runner:
         print(f"{LOGGING_PREFIX} Status: {status} (exit code {exit_code})")
         print(f"{LOGGING_PREFIX} Duration: {duration:.1f}s")
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
-
-    # -----------------------------------------------------------------------
-    # $output interpolation
-    # -----------------------------------------------------------------------
-
-    def _interpolate_output(self, resolved: dict, output_dir: Path) -> dict:
-        """Return a copy of resolved with $output replaced in any values."""
-        result = dict(resolved)
-        out = str(output_dir)
-        for p in self.params:
-            val = result.get(p.name)
-            if val is None or val is UNSET or p.type == "bool":
-                continue
-            if isinstance(val, list):
-                result[p.name] = [
-                    str(v).replace("$output", out) if isinstance(v, str) else v
-                    for v in val
-                ]
-            else:
-                result[p.name] = (
-                    str(val).replace("$output", out) if isinstance(val, str) else val
-                )
-        return result
 
     # -----------------------------------------------------------------------
     # Build command
@@ -780,6 +757,20 @@ class Runner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _interpolate_output(params: dict, output_dir: Path) -> dict:
+    """Return a copy of *params* with $output replaced in string values."""
+    out = str(output_dir)
+    result = {}
+    for k, v in params.items():
+        if isinstance(v, list):
+            result[k] = [x.replace("$output", out) if isinstance(x, str) else x for x in v]
+        elif isinstance(v, str):
+            result[k] = v.replace("$output", out)
+        else:
+            result[k] = v
+    return result
 
 
 def _collect_git_info() -> dict:
