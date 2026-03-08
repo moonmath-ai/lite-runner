@@ -350,9 +350,6 @@ class Runner:
         if not r.filled:
             r = r.ask_user(no_interactive=flags.no_interactive)
 
-        param_values = r.param_values
-        param_sources = r.param_sources
-
         # Git info and project
         git_info = _collect_git_info()
         project = flags.project or r.project or git_info.get("repo")
@@ -362,7 +359,7 @@ class Runner:
 
         # Config
         config: dict[str, object] = {}
-        for k, v in param_values.items():
+        for k, v in r.param_values.items():
             config[f"param/{k}"] = "<unset>" if v is UNSET else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
@@ -407,8 +404,8 @@ class Runner:
             print(f"[dry-run] Group: {r.run_group}")
             print(f"[dry-run] Tags: {r.tags}")
             print(f"[dry-run] Config:\n{pprint.pformat(config)}")
-            interpolated_params = r._interpolate_output(param_values, output_dir)
-            colored_cmd = r._format_command(interpolated_params, param_sources)
+            interpolated_params = r._interpolate_output(r.param_values, output_dir)
+            colored_cmd = r._format_command(interpolated_params, r.param_sources)
             print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
             print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
             # Show what files would be logged
@@ -435,10 +432,10 @@ class Runner:
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
         # Interpolate $output in param values
-        interpolated_params = r._interpolate_output(param_values, output_dir)
+        interpolated_params = r._interpolate_output(r.param_values, output_dir)
 
         # Log table params (prompt, etc.)
-        r._log_table_params(param_values)
+        r._log_table_params(r.param_values)
 
         # Log input files (log_when == "before")
         r._log_files(interpolated_params, when="before")
@@ -447,7 +444,7 @@ class Runner:
         cmd = r._build_command(interpolated_params)
         for b in r.backends:
             b.update_config({"meta/full_command": shlex.join(cmd)})
-        colored_cmd = r._format_command(interpolated_params, param_sources)
+        colored_cmd = r._format_command(interpolated_params, r.param_sources)
         print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
 
         # Execute
