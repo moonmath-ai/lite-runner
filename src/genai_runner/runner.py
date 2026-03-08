@@ -7,7 +7,6 @@ import copy
 import datetime
 import gzip
 import os
-import pprint
 import re
 import shlex
 import shutil
@@ -26,7 +25,7 @@ from typing import IO, Self, TextIO
 
 import git
 
-from .backends import JsonBackend, LogBackend, WandbBackend
+from .backends import DryRunBackend, JsonBackend, LogBackend, WandbBackend
 from .params import (
     UNSET,
     Metric,
@@ -369,18 +368,28 @@ class Runner:
         config["meta/command"] = shlex.join(r.command)
 
         # Init WandbBackend first (needs to happen early to get run_name)
-        wb_backend = None
-        if not flags.dry_run and not flags.no_wandb:
-            wb_backend = WandbBackend()
-            wb_backend.init(project, flags.run_name, r.run_group, r.tags, config)
-            run_name = wb_backend.run_name
-            run_url = wb_backend.run_url
-        elif flags.dry_run:
-            run_name = flags.run_name or "run"
-            run_url = "(dry run)"
+        backend_classes = []
+        if flags.dry_run:
+            backend_classes.append(DryRunBackend)
         else:
-            run_name = flags.run_name or "local"
-            run_url = "(W&B disabled)"
+            if not flags.no_wandb:
+                backend_classes.append(WandbBackend)
+            backend_classes.append(JsonBackend)
+
+        run_name = flags.run_name
+        backends = {}
+        for backend_class in backend_classes:
+            backends[backend_class] = backend_class(
+                project=project,
+                name=run_name,
+                group=r.run_group,
+                tags=r.tags,
+                config=config,
+            )
+            run_name = run_name or backends[backend_class].run_name
+            # TODO: dry run backend should default to "dry_run"
+            # TODO: json backend should default to "local"
+        r.backends = list(backends.values())
 
         # Output dir
         date_str = timestamp.strftime("%Y%m%d_%H%M")
@@ -389,41 +398,22 @@ class Runner:
         else:
             dir_name = f"{date_str}_{run_name}"
         output_dir = RUNS_DIR / project / dir_name
-
-        # Augment config with output_dir and wandb info
         config["meta/output_dir"] = str(output_dir)
-        if wb_backend is not None:
-            config["wandb/name"] = run_name
-            config["wandb/url"] = run_url
-            wb_backend.update_config({"meta/output_dir": str(output_dir)})
+        for backend in backends.values():
+            backend.update_config({"meta/output_dir": config["meta/output_dir"]})
 
-        # Dry run: print summary and return (no dirs, no execution)
-        if flags.dry_run:
-            print(f"[dry-run] Project: {project}")
-            print(f"[dry-run] Run name: {run_name}")
-            print(f"[dry-run] Group: {r.run_group}")
-            print(f"[dry-run] Tags: {r.tags}")
-            print(f"[dry-run] Config:\n{pprint.pformat(config)}")
-            interpolated_params = r._interpolate_output(r.param_values, output_dir)
-            colored_cmd = r._format_command(interpolated_params, r.param_sources)
-            print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
-            print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
-            # Show what files would be logged
-            r._print_file_plan(interpolated_params)
-            return
+        # W&B url:
+        config["wandb/url"] = (
+            backends[WandbBackend].run_url if WandbBackend in backends else "(no wandb)"
+        )
+        for backend in backends.values():
+            if not isinstance(backend, WandbBackend):
+                backend.update_config({"wandb/url": config["wandb/url"]})
 
         # Create output dir
-        output_dir.mkdir(parents=True, exist_ok=True)
+        if not flags.dry_run:
+            output_dir.mkdir(parents=True, exist_ok=True)
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
-
-        # JsonBackend is always active
-        json_backend = JsonBackend(output_dir)
-        json_backend.init(project, run_name, r.run_group, r.tags, config)
-
-        # Assemble backends
-        r.backends = [json_backend]
-        if wb_backend is not None:
-            r.backends.append(wb_backend)
 
         # Save code snapshot (git archive + dirty diff)
         try:
@@ -449,7 +439,13 @@ class Runner:
 
         # Execute
         print("=" * 60)
-        exit_code, duration, stdout_text, aborted = r._execute(cmd, output_dir)
+        if not flags.dry_run:
+            exit_code, duration, stdout_text, aborted = r._execute(cmd, output_dir)
+        else:
+            exit_code = 0
+            duration = 100
+            stdout_text = "This is a dry run"
+            aborted = False
         print("=" * 60)
 
         # Post-run: never raise, always try to finish backends

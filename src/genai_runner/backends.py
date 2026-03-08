@@ -3,22 +3,16 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Protocol
+from pathlib import Path
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from pathlib import Path
+import wandb
 
 
 class LogBackend(Protocol):
     """Protocol for logging backends."""
 
-    @property
-    def run_name(self) -> str: ...
-
-    @property
-    def run_url(self) -> str: ...
-
-    def init(
+    def __init__(
         self,
         project: str,
         name: str | None,
@@ -26,6 +20,9 @@ class LogBackend(Protocol):
         tags: list[str],
         config: dict,
     ) -> None: ...
+
+    @property
+    def run_name(self) -> str: ...
 
     def update_config(self, updates: dict) -> None: ...
 
@@ -49,19 +46,7 @@ class LogBackend(Protocol):
 class WandbBackend:
     """Log backend that sends data to Weights & Biases."""
 
-    def __init__(self) -> None:
-        self._run: Any = None
-        self._wandb: Any = None
-
-    @property
-    def run_name(self) -> str:
-        return self._run.name or self._run.id or "run"
-
-    @property
-    def run_url(self) -> str:
-        return self._run.url
-
-    def init(
+    def __init__(
         self,
         project: str,
         name: str | None,
@@ -69,10 +54,7 @@ class WandbBackend:
         tags: list[str],
         config: dict,
     ) -> None:
-        import wandb
-
-        self._wandb = wandb
-        self._run = wandb.init(
+        self.run = wandb.init(
             project=project,
             name=name,
             group=group,
@@ -81,69 +63,58 @@ class WandbBackend:
             config=config,
         )
 
+    @property
+    def run_name(self) -> str:
+        return self.run.name or self.run.id or "run"
+
+    @property
+    def run_url(self) -> str:
+        return self.run.url
+
     def update_config(self, updates: dict) -> None:
-        self._run.config.update(updates)
+        self.run.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         if log_as == "video":
             fmt = path.suffix.lstrip(".")
-            self._run.log({key: self._wandb.Video(str(path), format=fmt)})
+            self.run.log({key: wandb.Video(str(path), format=fmt)})
         elif log_as == "image":
-            self._run.log({key: self._wandb.Image(str(path))})
+            self.run.log({key: wandb.Image(str(path))})
         elif log_as == "text":
             text = path.read_text(errors="replace")
-            self._run.log({key: self._wandb.Html(f"<pre>{text}</pre>")})
+            self.run.log({key: wandb.Html(f"<pre>{text}</pre>")})
         elif log_as == "artifact":
-            artifact = self._wandb.Artifact(f"{key}-{self._run.id}", type=log_as)
+            artifact = wandb.Artifact(f"{key}-{self.run.id}", type=log_as)
             artifact.add_file(str(path))
-            self._run.log_artifact(artifact)
+            self.run.log_artifact(artifact)
 
     def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        artifact = self._wandb.Artifact(f"{name}-{self._run.id}", type=type)
+        artifact = wandb.Artifact(f"{name}-{self.run.id}", type=type)
         for f in files:
             artifact.add_file(f)
-        self._run.log_artifact(artifact)
+        self.run.log_artifact(artifact)
 
     def set_metric(self, name: str, value: object) -> None:
-        self._run.summary[name] = value
+        self.run.summary[name] = value
 
     def set_summary(self, summary: dict) -> None:
-        self._run.summary.update(summary)
+        self.run.summary.update(summary)
 
     def set_tags(self, tags: list[str]) -> None:
-        self._run.tags = tags
+        self.run.tags = tags
 
     def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        table = self._wandb.Table(columns=columns, data=data)
-        self._run.log({key: table})
+        table = wandb.Table(columns=columns, data=data)
+        self.run.log({key: table})
 
     def finish(self, exit_code: int) -> None:
-        self._run.finish(exit_code=exit_code)
+        self.run.finish(exit_code=exit_code)
 
 
 class JsonBackend:
     """Log backend that accumulates run info and writes run_info.json on finish."""
 
-    def __init__(self, output_dir: Path) -> None:
-        self._output_dir = output_dir
-        self.run_info: dict[str, Any] = {
-            "config": {},
-            "tags": [],
-            "group": None,
-            "metrics": {},
-            "summary": {},
-            "files_logged": [],
-        }
-
-    @property
-    def run_name(self) -> str:
-        return "local"
-
-    @property
-    def run_url(self) -> str:
-        return "(local)"
-
-    def init(
+    def __init__(
         self,
         project: str,
         name: str | None,
@@ -151,37 +122,105 @@ class JsonBackend:
         tags: list[str],
         config: dict,
     ) -> None:
-        self.run_info["config"] = dict(config)
-        self.run_info["tags"] = list(tags)
-        self.run_info["group"] = group
+        self.metadata = {
+            "project": project,
+            "name": name or "(local)",
+            "group": group,
+            "tags": list(tags),
+        }
+        self.config = dict(config)
+        self.metrics = {}
+        self.summary = {}
+        self.files_logged = []
+        self.tables = {}
+
+    @property
+    def run_name(self) -> str:
+        return self.metadata["name"]
 
     def update_config(self, updates: dict) -> None:
-        self.run_info["config"].update(updates)
+        self.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
-        self.run_info["files_logged"].append(
-            {"path": str(path), "log_as": log_as, "key": key}
-        )
+        self.files_logged.append({"path": str(path), "log_as": log_as, "key": key})
 
     def log_artifact(self, name: str, type: str, files: list[str]) -> None:
-        self.run_info["files_logged"].append({"type": type, "files": files})
+        self.files_logged.append({"type": type, "files": files})
 
     def set_metric(self, name: str, value: object) -> None:
-        self.run_info["metrics"][name] = value
+        self.metrics[name] = value
 
     def set_summary(self, summary: dict) -> None:
-        self.run_info["summary"] = summary
+        self.summary = summary
 
     def set_tags(self, tags: list[str]) -> None:
-        self.run_info["tags"] = tags
+        self.metadata["tags"] = tags
 
     def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
-        self.run_info.setdefault("tables", {})[key] = {
+        self.tables[key] = {
             "columns": columns,
             "data": data,
         }
 
     def finish(self, exit_code: int) -> None:
-        (self._output_dir / "run_info.json").write_text(
-            json.dumps(self.run_info, indent=2, default=str)
+        output_dir = Path(self.config["meta/output_dir"])
+        run_info = {
+            "metadata": self.metadata,
+            "config": self.config,
+            "metrics": self.metrics,
+            "summary": self.summary,
+            "files_logged": self.files_logged,
+            "tables": self.tables,
+            "exit_code": exit_code,
+        }
+        (output_dir / "run_info.json").write_text(
+            json.dumps(run_info, indent=2, default=str)
         )
+
+
+class DryRunBackend:
+    """Log backend that does nothing."""
+
+    def __init__(
+        self,
+        project: str,
+        name: str | None,
+        group: str | None,
+        tags: list[str],
+        config: dict,
+    ) -> None:
+        print(f"[dry-run] Project: {project}")
+        print(f"[dry-run] Name: {name}")
+        print(f"[dry-run] Group: {group}")
+        print(f"[dry-run] Tags: {tags}")
+        print(f"[dry-run] Config: {config}")
+
+    @property
+    def run_name(self) -> str:
+        return "dry_run"
+
+    def update_config(self, updates: dict) -> None:
+        print(f"[dry-run] Updating config: {updates}")
+
+    def log_file(self, path: Path, log_as: str, key: str) -> None:
+        print(f"[dry-run] Logging file: {path} as {log_as} as {key}")
+
+    def log_artifact(self, name: str, type: str, files: list[str]) -> None:
+        print(f"[dry-run] Logging artifact: {name} as {type} with files: {files}")
+
+    def set_metric(self, name: str, value: object) -> None:
+        print(f"[dry-run] Setting metric: {name} to {value}")
+
+    def set_summary(self, summary: dict) -> None:
+        print(f"[dry-run] Setting summary: {summary}")
+
+    def set_tags(self, tags: list[str]) -> None:
+        print(f"[dry-run] Setting tags: {tags}")
+
+    def log_table(self, key: str, columns: list[str], data: list[list[object]]) -> None:
+        print(
+            f"[dry-run] Logging table: {key} with columns: {columns} and data: {data}"
+        )
+
+    def finish(self, exit_code: int) -> None:
+        print(f"[dry-run] Finishing with exit code: {exit_code}")
