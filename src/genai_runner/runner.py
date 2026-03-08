@@ -18,12 +18,13 @@ import tarfile
 import threading
 import time
 import zipfile
-import git
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import IO, Self, TextIO
+
+import git
 
 from .backends import JsonBackend, LogBackend, WandbBackend
 from .params import (
