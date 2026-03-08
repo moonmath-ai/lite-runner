@@ -3,7 +3,7 @@
 
 from functools import lru_cache
 
-from huggingface_hub import snapshot_download  # noqa: F401
+# from huggingface_hub import snapshot_download  # noqa: F401
 
 from genai_runner import Metric, Param, Runner
 
@@ -17,7 +17,7 @@ def _ltx2_dir() -> str:
 @lru_cache
 def _gemma_dir() -> str:
     # return snapshot_download("google/gemma-3-12b-it-qat-q4_0-unquantized")
-    return "hf_dir/Gemma"
+    return "/hf_dir/Gemma"
 
 
 runner = Runner(
