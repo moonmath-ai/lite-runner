@@ -577,43 +577,6 @@ class Runner:
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
 
     # -----------------------------------------------------------------------
-    # -----------------------------------------------------------------------
-    # Dry-run file plan
-    # -----------------------------------------------------------------------
-
-    def _print_file_plan(self, param_values: dict) -> None:
-        """Print what files would be logged (for --dry-run)."""
-        before = []
-        after = []
-        for p in self.params:
-            val = param_values.get(p.name)
-            if val is None or val is UNSET:
-                continue
-            if p.log_when is None:
-                continue
-            values = val if isinstance(val, list) else [val]
-            for v, t in zip(values, p.type_list, strict=True):
-                log_as = _log_as_from_type(t)
-                if log_as is None:
-                    continue
-                entry = f"  {log_as}: {v} (param: {p.name})"
-                if p.log_when == "before":
-                    before.append(entry)
-                else:
-                    after.append(entry)
-        for o in self.outputs:
-            entry = f"  {o.log_as}: {o.path}"
-            if o.name:
-                entry += f" (name: {o.name})"
-            after.append(entry)
-        if before:
-            print("Files to log (before run):")
-            print("\n".join(before))
-        if after:
-            print("Files to log (after run):")
-            print("\n".join(after))
-
-    # -----------------------------------------------------------------------
     # $output interpolation
     # -----------------------------------------------------------------------
 
