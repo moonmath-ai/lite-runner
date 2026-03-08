@@ -310,6 +310,7 @@ class Runner:
         self,
         *,
         dry_run: bool | None = None,
+        min_free_space_gib: float | None = None,
         no_interactive: bool | None = None,
         no_wandb: bool | None = None,
         project: str | None = None,
@@ -322,6 +323,8 @@ class Runner:
 
         Keyword args override CLI flags (with warnings on contradiction).
         """
+        if min_free_space_gib is not None:
+            self.min_free_space_gib = min_free_space_gib
         self.check_disk_space()
 
         r = self
