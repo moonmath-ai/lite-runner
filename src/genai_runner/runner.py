@@ -132,7 +132,10 @@ class Runner:
 
         for param in self.params:
             if not param.is_fixed:
-                parser.add_argument(param.flag, **param.argparse_kwargs())
+                param_kwargs = param.argparse_kwargs()
+                if param.type == "bool":
+                    param_kwargs["default"] = None
+                parser.add_argument(param.flag, **param_kwargs)
 
         return parser
 

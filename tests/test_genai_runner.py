@@ -245,7 +245,7 @@ def test_parse_bool_flag():
 def test_parse_bool_flag_absent():
     runner = _make_runner([Param("verbose", type="bool")])
     r = runner.parse_cli([])
-    assert "verbose" not in r.param_values or r.param_values["verbose"] is False
+    assert "verbose" not in r.param_values
 
 
 def test_fixed_params_not_in_argparse():
