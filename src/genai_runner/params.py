@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from typing import Any, Literal
 
 import questionary
@@ -278,30 +278,30 @@ class RunFlags:
     dry_run: bool | None = None
     no_interactive: bool | None = None
     no_wandb: bool | None = None
+    project: str | None = None
     run_name: str | None = None
-    wandb_project: str | None = None
 
-    def merge(
-        self,
-        cli_explicit_flags: set[str] = frozenset(),
-        **overrides: object,
-    ) -> RunFlags:
+    @classmethod
+    def from_namespace(cls, ns: object) -> RunFlags:
+        """Build RunFlags from an argparse namespace."""
+        return cls(**{f.name: getattr(ns, f.name, None) for f in fields(cls)})
+
+    def merge(self, **overrides: object) -> RunFlags:
         """Return a new RunFlags with *overrides* applied.
 
         ``None`` values in *overrides* are ignored (no change).
-        Warns when an override contradicts an explicit CLI flag.
+        Warns when an override contradicts a previously set flag.
         """
         updates: dict[str, object] = {}
         for field_name, value in overrides.items():
             if value is None:
                 continue
-            if field_name in cli_explicit_flags:
-                cli_val = getattr(self, field_name)
-                if cli_val != value:
-                    print(
-                        f"[genai_runner] Warning: run({field_name}={value!r})"
-                        f" overrides CLI flag (was {cli_val!r})",
-                        file=sys.stderr,
-                    )
+            existing = getattr(self, field_name)
+            if existing is not None and existing != value:
+                print(
+                    f"[genai_runner] Warning: run({field_name}={value!r})"
+                    f" overrides CLI flag (was {existing!r})",
+                    file=sys.stderr,
+                )
             updates[field_name] = value
         return replace(self, **updates) if updates else self

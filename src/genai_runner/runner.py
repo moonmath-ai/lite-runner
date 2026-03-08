@@ -20,6 +20,7 @@ import time
 import zipfile
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import IO, Self, TextIO
 
@@ -82,11 +83,15 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
+        reserved = {f.name for f in dataclass_fields(RunFlags)}
+        for p in self.params:
+            if p.name in reserved:
+                msg = f"Param name {p.name!r} conflicts with built-in flag"
+                raise ValueError(msg)
         self.params_by_name: dict[str, Param] = {p.name: p for p in self.params}
         self.param_values: dict[str, object] = {}
         self.param_sources: dict[str, str] = {}
         self.run_flags: RunFlags | None = None
-        self.cli_explicit_flags: set[str] = set()
         self.cli_parsed: bool = False
         self.defaults_resolved: bool = False
         self.filled: bool = False
@@ -114,18 +119,18 @@ class Runner:
             default=None,
             help="Non-interactive mode; fail if required params are missing",
         )
-        parser.add_argument("--run-name", default=None, help="Override W&B run name")
-        parser.add_argument(
-            "--wandb-project",
-            default=None,
-            help="Override W&B project name",
-        )
         parser.add_argument(
             "--no-wandb",
             action="store_true",
             default=None,
             help="Skip W&B logging; still execute command and save outputs locally",
         )
+        parser.add_argument(
+            "--project",
+            default=None,
+            help="Override project name",
+        )
+        parser.add_argument("--run-name", default=None, help="Override W&B run name")
 
         for param in self.params:
             if not param.is_fixed:
@@ -200,26 +205,7 @@ class Runner:
             if not p.is_fixed
         }
 
-        # Track which run flags were explicitly set on CLI
-        explicit_flags: set[str] = set()
-        if parsed_args.dry_run is not None:
-            explicit_flags.add("dry_run")
-        if parsed_args.no_interactive is not None:
-            explicit_flags.add("no_interactive")
-        if parsed_args.no_wandb is not None:
-            explicit_flags.add("no_wandb")
-        if parsed_args.run_name is not None:
-            explicit_flags.add("run_name")
-        if parsed_args.wandb_project is not None:
-            explicit_flags.add("wandb_project")
-
-        run_flags = RunFlags(
-            dry_run=parsed_args.dry_run,
-            no_interactive=parsed_args.no_interactive,
-            no_wandb=parsed_args.no_wandb,
-            run_name=parsed_args.run_name,
-            wandb_project=parsed_args.wandb_project,
-        )
+        run_flags = RunFlags.from_namespace(parsed_args)
 
         new = self.copy()
         for name, val in parsed_params.items():
@@ -228,7 +214,6 @@ class Runner:
                     val = self.params_by_name[name].cast_nargs(val)
                 new.param_values[name] = val
                 new.param_sources[name] = "cli"
-        new.cli_explicit_flags = explicit_flags
         new.run_flags = run_flags
         new.cli_parsed = True
         return new
@@ -327,6 +312,7 @@ class Runner:
         dry_run: bool | None = None,
         no_interactive: bool | None = None,
         no_wandb: bool | None = None,
+        project: str | None = None,
         run_name: str | None = None,
     ) -> None:
         """Execute the full run lifecycle.
@@ -334,14 +320,7 @@ class Runner:
         Auto-calls :meth:`parse_cli`, :meth:`resolve_defaults`, and
         :meth:`ask_user` for any steps not yet applied.
 
-        Keyword args override CLI flags (with warnings on contradiction):
-
-        Args:
-            dry_run: Print the command and exit without running.
-            no_interactive: Skip interactive prompts; fail if required
-                params are missing.
-            no_wandb: Skip W&B logging (still logs to JSON).
-            run_name: Override the W&B run name.
+        Keyword args override CLI flags (with warnings on contradiction).
         """
         self.check_disk_space()
 
@@ -351,10 +330,10 @@ class Runner:
 
         base_flags = r.run_flags or RunFlags()
         flags = base_flags.merge(
-            r.cli_explicit_flags,
             dry_run=dry_run,
             no_interactive=no_interactive,
             no_wandb=no_wandb,
+            project=project,
             run_name=run_name,
         )
 
@@ -368,12 +347,9 @@ class Runner:
 
         # Git info and project
         git_info = _collect_git_info()
-        project = flags.wandb_project or r.project or git_info.get("repo")
+        project = flags.project or r.project or git_info.get("repo")
         if project is None:
-            msg = (
-                "Cannot determine project name:"
-                " set wandb_project= or run from a git repo"
-            )
+            msg = "Cannot determine project name: set project= or run from a git repo"
             raise ValueError(msg)
 
         # Config

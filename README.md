@@ -153,7 +153,7 @@ Runner(
     metrics=[...],
     tags=["experiment-1"],            # W&B run tags
     env={"CUDA_VISIBLE_DEVICES": "0"},  # extra env vars for subprocess
-    wandb_project="my-project",       # default: git repo name
+    project="my-project",             # default: git repo name
     group="my-sweep",                 # W&B run group for sweeps (None = no grouping)
 )
 ```
@@ -191,7 +191,7 @@ Methods:
 | `--no-interactive` | Fail if required params missing |
 | `--no-wandb` | Skip W&B logging (still logs to JSON) |
 | `--run-name NAME` | Override W&B run name |
-| `--wandb-project NAME` | Override W&B project |
+| `--project NAME` | Override project name |
 
 ## What gets logged to W&B
 

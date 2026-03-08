@@ -291,10 +291,10 @@ def test_builtin_flags():
     assert r.run_flags.no_interactive is True
 
 
-def test_wandb_project_override():
+def test_project_override():
     runner = _make_runner()
-    r = runner.parse_cli(["--wandb-project", "my-project"])
-    assert r.run_flags.wandb_project == "my-project"
+    r = runner.parse_cli(["--project", "my-project"])
+    assert r.run_flags.project == "my-project"
 
 
 def test_unknown_param_type_raises():
@@ -305,6 +305,11 @@ def test_unknown_param_type_raises():
 def test_unknown_param_type_in_list_raises():
     with pytest.raises(ValueError, match="Unknown param type 'banana'"):
         Param("x", type=["str", "banana"])
+
+
+def test_param_name_conflicts_with_builtin_flag():
+    with pytest.raises(ValueError, match="conflicts with built-in flag"):
+        Runner(command="echo", params=[Param("project")])
 
 
 def test_bool_in_type_list_raises():
@@ -988,8 +993,7 @@ def test_run_kwargs_warn_on_contradiction(capsys):
     """run() warns when kwargs contradict explicit CLI flags."""
     runner = _make_runner()
     r = runner.parse_cli(["--no-interactive"])
-    base_flags = r.run_flags or RunFlags()
-    flags = base_flags.merge(r.cli_explicit_flags, no_interactive=False)
+    flags = r.run_flags.merge(no_interactive=False)
     assert flags.no_interactive is False  # kwarg wins
     captured = capsys.readouterr()
     assert "Warning" in captured.err
@@ -1000,8 +1004,7 @@ def test_run_kwargs_no_warn_on_default():
     """No warning when kwarg matches CLI default (not explicitly passed)."""
     runner = _make_runner()
     r = runner.parse_cli([])
-    base_flags = r.run_flags or RunFlags()
-    flags = base_flags.merge(r.cli_explicit_flags, no_interactive=True)
+    flags = r.run_flags.merge(no_interactive=True)
     assert flags.no_interactive is True  # kwarg wins, no warning
 
 
@@ -1087,6 +1090,27 @@ def test_full_run_with_mocked_wandb(tmp_path):
     assert wb_run.summary["duration_seconds"] > 0
     assert (tmp_path / "genai_runs" / "test-repo").exists()
     wb_run.finish.assert_called_once_with(exit_code=0)
+
+
+def test_run_project_kwarg_flows_to_backend(tmp_path):
+    mock_wb = MagicMock()
+    wb_run = _mock_wb_run()
+    mock_wb.init.return_value = wb_run
+    mock_wb.Artifact = MagicMock()
+
+    runner = Runner(
+        command=f"{sys.executable} -c \"print('ok')\"",
+        params=[Param("seed", type="int", default=42)],
+    )
+    with (
+        patch.dict("sys.modules", {"wandb": mock_wb}),
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("genai_runner.runner._log_code_snapshot"),
+        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+    ):
+        runner.run(no_interactive=True, project="custom-proj")
+
+    assert mock_wb.init.call_args[1]["project"] == "custom-proj"
 
 
 def test_full_run_explicit_group(tmp_path):
