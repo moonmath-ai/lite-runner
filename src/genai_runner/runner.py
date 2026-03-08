@@ -83,6 +83,7 @@ class Runner:
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
+        self.params_by_name: dict[str, Param] = {p.name: p for p in self.params}
         self.param_values: dict[str, object] = {}
         self.param_sources: dict[str, str] = {}
         self.run_flags: RunFlags | None = None
@@ -182,6 +183,8 @@ class Runner:
         new = self.copy()
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
+                if self.params_by_name[name].nargs is not None:
+                    val = _cast_nargs(val, self.params_by_name[name].type_list)
                 new.param_values[name] = val
                 new.param_sources[name] = "cli"
         new.cli_explicit_flags = explicit_flags
@@ -697,9 +700,9 @@ class Runner:
             if val is None or val is UNSET or p.type == "bool":
                 continue
             if isinstance(val, list):
-                result[p.name] = [str(v).replace("$output", out) for v in val]
+                result[p.name] = [str(v).replace("$output", out) if isinstance(v, str) else v for v in val]
             else:
-                result[p.name] = str(val).replace("$output", out)
+                result[p.name] = str(val).replace("$output", out) if isinstance(val, str) else val
         return result
 
     # -----------------------------------------------------------------------

@@ -166,7 +166,7 @@ def test_param_log_when_list_value():
     assert (
         Param(
             "img",
-            value=["$output/img.jpg", "0", "0.8"],
+            value=["$output/img.jpg", 0, 0.8],
             type=["path-image", "float", "float"],
         ).log_when
         == "after"
@@ -275,13 +275,13 @@ def test_parse_type_list():
     )
     r = runner.parse_cli(["--image", "photo.jpg", "0", "0.8"])
     # argparse returns strings; casting happens in resolve_defaults
-    assert r.param_values["image"] == ["photo.jpg", "0", "0.8"]
+    assert r.param_values["image"] == ["photo.jpg", 0, 0.8]
 
 
 def test_parse_types_with_spaces_in_path():
     runner = _make_runner([Param("image", type=["path", "float", "float"])])
     r = runner.parse_cli(["--image", "path/to something/img.jpg", "0", "0.8"])
-    assert r.param_values["image"] == ["path/to something/img.jpg", "0", "0.8"]
+    assert r.param_values["image"] == ["path/to something/img.jpg", 0, 0.8]
 
 
 def test_builtin_flags():
@@ -378,7 +378,7 @@ def test_resolve_defaults_does_not_overwrite_override():
 
 def test_resolve_defaults_casts_type_list():
     runner = _make_runner(params=[Param("image", type=["path", "int", "float"])])
-    r = runner.parse_cli(["--image", "photo.jpg", "5", "0.8"]).resolve_defaults()
+    r = runner.parse_cli(["--image", "photo.jpg", "5", "0.8"])
     assert r.param_values["image"] == ["photo.jpg", 5, 0.8]
 
 
@@ -388,7 +388,7 @@ def test_resolve_defaults_casts_default_list():
             Param(
                 "image",
                 type=["path", "float", "float"],
-                default=["img.jpg", "0", "0.8"],
+                default=["img.jpg", 0, 0.8],
             ),
         ],
     )
@@ -771,11 +771,9 @@ def test_interpolate_replaces_output_in_string(tmp_path):
 
 
 def test_interpolate_replaces_output_in_list(tmp_path):
-    runner = _make_runner(params=[Param("img", value=["$output/img.jpg", "0", "0.8"])])
-    result = runner._interpolate_output(
-        {"img": ["$output/img.jpg", "0", "0.8"]}, tmp_path
-    )
-    assert result["img"] == [f"{tmp_path}/img.jpg", "0", "0.8"]
+    runner = _make_runner(params=[Param("img", value=["$output/img.jpg", 0, 0.8])])
+    result = runner._interpolate_output({"img": ["$output/img.jpg", 0, 0.8]}, tmp_path)
+    assert result["img"] == [f"{tmp_path}/img.jpg", 0, 0.8]
 
 
 def test_interpolate_non_output_unchanged(tmp_path):
@@ -825,9 +823,9 @@ def test_build_bool_flag_false_omitted():
 
 def test_build_multi_value_flag():
     runner = Runner(
-        command="run.py", params=[Param("image", value=["photo.jpg", "0", "0.8"])]
+        command="run.py", params=[Param("image", value=["photo.jpg", 0, 0.8])]
     )
-    assert runner._build_command({"image": ["photo.jpg", "0", "0.8"]}) == [
+    assert runner._build_command({"image": ["photo.jpg", 0, 0.8]}) == [
         "run.py",
         "--image",
         "photo.jpg",
