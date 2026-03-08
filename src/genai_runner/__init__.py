@@ -5,6 +5,7 @@ from .params import UNSET, Metric, Output, Param, ParamType
 from .runner import Runner
 
 __all__ = [
+    "UNSET",
     "JsonBackend",
     "LogBackend",
     "Metric",
@@ -12,6 +13,5 @@ __all__ = [
     "Param",
     "ParamType",
     "Runner",
-    "UNSET",
     "WandbBackend",
 ]
