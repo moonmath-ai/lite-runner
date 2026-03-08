@@ -37,6 +37,9 @@ RUNS_DIR = Path.home() / "genai_runs"
 LOGGING_PREFIX = "\033[36mgenai-runner:\033[0m"
 
 
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+
 @dataclass
 class Runner:
     """Experiment runner that wraps a model CLI with tracking.
@@ -74,6 +77,7 @@ class Runner:
     project: str | None = None
     run_group: str | None = None
     tags: list[str] = field(default_factory=list)
+    min_free_space_gib: float = 1.0
 
     def __post_init__(self) -> None:
         if isinstance(self.command, str):
@@ -301,6 +305,22 @@ class Runner:
         new.filled = True
         return new
 
+    def check_disk_space(self) -> None:
+        """Exit if the runs directory has less than *min_free_space_gib* free."""
+        gib = 1024 * 1024 * 1024
+        needed = self.min_free_space_gib * gib
+        check_path = RUNS_DIR
+        while not check_path.exists():
+            check_path = check_path.parent
+        free = shutil.disk_usage(check_path).free
+        if free < needed:
+            print(
+                f"{LOGGING_PREFIX} Error: Not enough free space on device."
+                f" Minimal free space: {self.min_free_space_gib:.2f} GiB."
+                f" Available free space: {free / gib:.2f} GiB",
+            )
+            sys.exit(1)  # TODO: all sys.exit should occur at run()
+
     def run(
         self,
         *,
@@ -323,20 +343,7 @@ class Runner:
             no_wandb: Skip W&B logging (still logs to JSON).
             run_name: Override the W&B run name.
         """
-        gib = 1024 * 1024 * 1024
-        minimal_free_space = 1 * gib
-        # Find nearest existing ancestor for disk usage check
-        check_path = RUNS_DIR
-        while not check_path.exists():
-            check_path = check_path.parent
-        if shutil.disk_usage(check_path).free < minimal_free_space:
-            msg = (
-                "Not enough free space on device. Minimal free space:"
-                f" {minimal_free_space / gib:.2f} GiB. Available free space:"
-                f" {shutil.disk_usage(check_path).free / gib:.2f} GiB"
-            )
-            print(f"{LOGGING_PREFIX} Error: {msg}")
-            sys.exit(1)
+        self.check_disk_space()
 
         r = self
         if not r.cli_parsed:
