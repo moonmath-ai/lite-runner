@@ -468,11 +468,11 @@ class Runner:
         log_files(backend_list, r.params, interpolated_params, when="before")
 
         # Build command
-        cmd = r._build_command(interpolated_params)
+        cmd = r.build_command(interpolated_params)
         for b in backend_list:
             b.update_config({"meta/full_command": shlex.join(cmd)})
-        colored_cmd = r._format_command(interpolated_params, r.param_sources)
-        print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
+        colored = r.build_command(interpolated_params, r.param_sources)
+        print(f"{LOGGING_PREFIX} Command:\n{' '.join(colored)}")
 
         # Execute
         print("=" * 60)
@@ -580,59 +580,36 @@ class Runner:
     # Build command
     # -----------------------------------------------------------------------
 
-    def _format_command(
+    def build_command(
         self,
         param_values: dict,
-        param_sources: dict,
-    ) -> str:
-        """Build a colored command string for display."""
-        _RST = "\033[0m"
-        _BOLD = "\033[1m"
-        _SOURCE_COLORS = {
-            "prompt": "\033[31m",  # red — user prompted
-            "default": "\033[32m",  # green — default value
-            "cli": "\033[36m",  # cyan — from CLI
-            "override": "\033[36m",  # cyan — from override
-            "fixed": "\033[33m",  # yellow — fixed value=
-        }
+        param_sources: dict | None = None,
+    ) -> list[str]:
+        """Build command as a token list.
 
-        parts = [shlex.join(self.command)]
+        Without *param_sources*, returns plain tokens for subprocess.
+        With *param_sources*, tokens are wrapped in ANSI color codes
+        for display — join with ``" ".join()`` to print.
+        """
+        color = param_sources is not None
+        cmd = self.command[:]
         for p in self.params:
             val = param_values.get(p.name)
             if val is UNSET:
                 continue
             assert val is not None
             assert p.flag is not None
-
             if p.type == "bool" and not val:
                 continue
-
-            source = param_sources.get(p.name, "")
-            color = _SOURCE_COLORS.get(source, _RST)
+            clr = _SOURCE_COLORS.get(param_sources.get(p.name, ""), "") if color else ""
+            rst = _RST if color else ""
+            bold = _BOLD if color else ""
+            cmd.append(f"{clr}{p.flag}{rst}")
             if p.type == "bool":
-                parts.append(f"{color}{p.flag}{_RST}")
-            else:
-                values = val if isinstance(val, list) else [val]
-                val_str = " ".join(shlex.quote(str(v)) for v in values)
-                parts.append(f"{color}{p.flag} {_BOLD}{val_str}{_RST}")
-        return " ".join(parts)
-
-    def _build_command(self, param_values: dict) -> list[str]:
-        """Build the subprocess argv from command + resolved param values."""
-        cmd = self.command
-        for p in self.params:
-            val = param_values.get(p.name)
-            if val is UNSET:
                 continue
-            assert val is not None
-            assert p.flag is not None
-            if p.type == "bool":
-                if val:
-                    cmd.append(p.flag)
-            else:
-                values = val if isinstance(val, list) else [val]
-                cmd.append(p.flag)
-                cmd.extend(str(v) for v in values)
+            values = val if isinstance(val, list) else [val]
+            values = [f"{bold}{clr}{v}{rst}" for v in values]
+            cmd.extend(values)
         return cmd
 
     # -----------------------------------------------------------------------
@@ -736,6 +713,17 @@ class Runner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+_RST = "\033[0m"
+_BOLD = "\033[1m"
+_SOURCE_COLORS = {
+    "prompt": "\033[31m",  # red — user prompted
+    "default": "\033[32m",  # green — default value
+    "cli": "\033[36m",  # cyan — from CLI
+    "override": "\033[36m",  # cyan — from override
+    "fixed": "\033[33m",  # yellow — fixed value=
+}
 
 
 def _interpolate_output(params: dict, output_dir: Path) -> dict:

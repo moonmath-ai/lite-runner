@@ -422,7 +422,7 @@ def test_build_command_skips_unset():
     runner = _make_runner(
         params=[Param("prompt"), Param("mode", choices=["fast", "slow"])],
     )
-    cmd = runner._build_command({"prompt": "a cat", "mode": UNSET})
+    cmd = runner.build_command({"prompt": "a cat", "mode": UNSET})
     assert cmd == ["echo", "hello", "--prompt", "a cat"]
 
 
@@ -491,7 +491,7 @@ def test_build_basic_command():
             Param("seed", type="int", default=42),
         ],
     )
-    cmd = runner._build_command({"prompt": "a cat", "seed": 42})
+    cmd = runner.build_command({"prompt": "a cat", "seed": 42})
     assert cmd == [
         "python",
         "generate.py",
@@ -504,13 +504,13 @@ def test_build_basic_command():
 
 def test_build_bool_flag():
     runner = _make_runner(params=[Param("turbo", type="bool")])
-    cmd = runner._build_command({"turbo": True})
+    cmd = runner.build_command({"turbo": True})
     assert cmd == ["echo", "hello", "--turbo"]
 
 
 def test_build_bool_flag_false_omitted():
     runner = _make_runner(params=[Param("turbo", type="bool")])
-    cmd = runner._build_command({"turbo": False})
+    cmd = runner.build_command({"turbo": False})
     assert cmd == ["echo", "hello"]
 
 
@@ -524,13 +524,13 @@ def test_build_multi_value_flag():
             ),
         ],
     )
-    cmd = runner._build_command({"image": ["photo.jpg", 0, 0.8]})
+    cmd = runner.build_command({"image": ["photo.jpg", 0, 0.8]})
     assert cmd == ["echo", "hello", "--image", "photo.jpg", "0", "0.8"]
 
 
 def test_build_custom_flag():
     runner = _make_runner(params=[Param("x", flag="-x")])
-    cmd = runner._build_command({"x": "val"})
+    cmd = runner.build_command({"x": "val"})
     assert cmd == ["echo", "hello", "-x", "val"]
 
 
@@ -539,13 +539,13 @@ def test_build_command_as_list():
         command=["python", "-u", "gen.py"],
         params=[Param("seed", type="int")],
     )
-    cmd = runner._build_command({"seed": 42})
+    cmd = runner.build_command({"seed": 42})
     assert cmd == ["python", "-u", "gen.py", "--seed", "42"]
 
 
 def test_build_command_string_with_quotes():
     runner = Runner(command='echo "hello world"', params=[])
-    cmd = runner._build_command({})
+    cmd = runner.build_command({})
     assert cmd == ["echo", "hello world"]
 
 
@@ -560,7 +560,7 @@ def test_build_type_list_from_cli():
         ],
     )
     r = runner.parse_cli(["--image", "photo.jpg", "0", "0.8"])
-    cmd = runner._build_command(r.param_values)
+    cmd = runner.build_command(r.param_values)
     assert cmd == ["echo", "hello", "--image", "photo.jpg", "0.0", "0.8"]
 
 
