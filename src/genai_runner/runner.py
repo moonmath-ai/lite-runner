@@ -95,8 +95,6 @@ class Runner:
         self.cli_parsed: bool = False
         self.defaults_resolved: bool = False
         self.filled: bool = False
-        self.backends: list[LogBackend] = []
-
     # -------------------------------------------------------------------
     # Public param pipeline
     # -------------------------------------------------------------------
@@ -389,7 +387,7 @@ class Runner:
             run_name = run_name or backends[backend_class].run_name
             # TODO: dry run backend should default to "dry_run"
             # TODO: json backend should default to "local"
-        r.backends = list(backends.values())
+        backend_list = list(backends.values())
 
         # Output dir
         date_str = timestamp.strftime("%Y%m%d_%H%M")
@@ -399,14 +397,14 @@ class Runner:
             dir_name = f"{date_str}_{run_name}"
         output_dir = RUNS_DIR / project / dir_name
         config["meta/output_dir"] = str(output_dir)
-        for backend in backends.values():
+        for backend in backend_list:
             backend.update_config({"meta/output_dir": config["meta/output_dir"]})
 
         # W&B url:
         config["wandb/url"] = (
             backends[WandbBackend].run_url if WandbBackend in backends else "(no wandb)"
         )
-        for backend in backends.values():
+        for backend in backend_list:
             if not isinstance(backend, WandbBackend):
                 backend.update_config({"wandb/url": config["wandb/url"]})
 
@@ -417,7 +415,7 @@ class Runner:
 
         # Save code snapshot (git archive + dirty diff)
         try:
-            _log_code_snapshot(r.backends, output_dir, git_info)
+            _log_code_snapshot(backend_list, output_dir, git_info)
         except Exception as e:  # noqa: BLE001
             print(f"[genai_runner] Warning: code snapshot failed: {e}")
 
@@ -425,14 +423,14 @@ class Runner:
         interpolated_params = r._interpolate_output(r.param_values, output_dir)
 
         # Log table params (prompt, etc.)
-        r._log_table_params(r.param_values)
+        r._log_table_params(backend_list, r.param_values)
 
         # Log input files (log_when == "before")
-        r._log_files(interpolated_params, when="before")
+        r._log_files(backend_list, interpolated_params, when="before")
 
         # Build command
         cmd = r._build_command(interpolated_params)
-        for b in r.backends:
+        for b in backend_list:
             b.update_config({"meta/full_command": shlex.join(cmd)})
         colored_cmd = r._format_command(interpolated_params, r.param_sources)
         print(f"{LOGGING_PREFIX} Command:\n{colored_cmd}")
@@ -450,6 +448,7 @@ class Runner:
 
         # Post-run: never raise, always try to finish backends
         r._post_run(
+            backend_list,
             interpolated_params,
             output_dir,
             exit_code,
@@ -464,6 +463,7 @@ class Runner:
 
     def _post_run(
         self,
+        backends: list[LogBackend],
         param_values: dict,
         output_dir: Path,
         exit_code: int,
@@ -492,31 +492,31 @@ class Runner:
         steps: list[tuple[str, object]] = [
             (
                 "extract metrics",
-                lambda: self._extract_metrics(stdout_text),
+                lambda: self._extract_metrics(backends, stdout_text),
             ),
             (
                 "log output files",
-                lambda: self._log_files(param_values, when="after"),
+                lambda: self._log_files(backends, param_values, when="after"),
             ),
             (
                 "log extra outputs",
-                lambda: self._log_extra_outputs(output_dir),
+                lambda: self._log_extra_outputs(backends, output_dir),
             ),
             (
                 "log run logs",
-                lambda: self._log_run_logs(output_dir),
+                lambda: self._log_run_logs(backends, output_dir),
             ),
             (
                 "tag run status",
                 lambda: (
-                    [b.set_tags([*run_tags, status]) for b in self.backends]
+                    [b.set_tags([*run_tags, status]) for b in backends]
                     if status != "success"
                     else None
                 ),
             ),
             (
                 "update summary",
-                lambda: [b.set_summary(summary) for b in self.backends],
+                lambda: [b.set_summary(summary) for b in backends],
             ),
         ]
 
@@ -527,7 +527,7 @@ class Runner:
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
 
         # Finish each backend individually so one failure doesn't block others
-        for b in self.backends:
+        for b in backends:
             try:
                 b.finish(exit_code)
             except Exception as e:  # noqa: BLE001
@@ -777,7 +777,7 @@ class Runner:
     # Table logging (prominent display of prompts etc.)
     # -----------------------------------------------------------------------
 
-    def _log_table_params(self, resolved_params: dict) -> None:
+    def _log_table_params(self, backends: list[LogBackend], resolved_params: dict) -> None:
         """Log params marked with table=True as a W&B Table."""
         rows = [
             [p.name, resolved_params.get(p.name)]
@@ -785,14 +785,14 @@ class Runner:
             if p.table and resolved_params.get(p.name) not in (None, UNSET)
         ]
         if rows:
-            for b in self.backends:
+            for b in backends:
                 b.log_table("params", ["name", "value"], rows)
 
     # -----------------------------------------------------------------------
     # File logging
     # -----------------------------------------------------------------------
 
-    def _log_files(self, param_values: dict, when: str) -> None:
+    def _log_files(self, backends: list[LogBackend], param_values: dict, when: str) -> None:
         for p in self.params:
             if p.log_when != when:
                 continue
@@ -808,10 +808,10 @@ class Runner:
                 if not path.exists():
                     msg = f"File not found: {path} (param '{p.name}')"
                     raise FileNotFoundError(msg)
-                for b in self.backends:
+                for b in backends:
                     b.log_file(path, log_as, key=p.name)
 
-    def _log_extra_outputs(self, output_dir: Path) -> None:
+    def _log_extra_outputs(self, backends: list[LogBackend], output_dir: Path) -> None:
         out = str(output_dir)
         seen_zips: set[str] = set()
         for o in self.outputs:
@@ -832,7 +832,7 @@ class Runner:
                 base = path
                 matches = sorted(path.rglob("*"))
             else:
-                _log_single_output(self.backends, path, o, out)
+                _log_single_output(backends, path, o, out)
                 continue
 
             # Glob or directory: upload matches
@@ -852,28 +852,28 @@ class Runner:
                     )
                     raise ValueError(msg)
                 seen_zips.add(label)
-                _zip_and_upload(self.backends, matches, base, output_dir, label)
+                _zip_and_upload(backends, matches, base, output_dir, label)
             else:
                 for m in matches:
                     if m.is_file():
-                        for b in self.backends:
+                        for b in backends:
                             b.log_file(m, o.log_as, key=label)
 
-    def _log_run_logs(self, output_dir: Path) -> None:
+    def _log_run_logs(self, backends: list[LogBackend], output_dir: Path) -> None:
         files = [
             str(output_dir / name)
             for name in ("run.log", "stdout.log", "stderr.log")
             if (output_dir / name).exists()
         ]
         if files:
-            for b in self.backends:
+            for b in backends:
                 b.log_artifact("logs", "log", files)
 
     # -----------------------------------------------------------------------
     # Metric extraction
     # -----------------------------------------------------------------------
 
-    def _extract_metrics(self, stdout_text: str) -> None:
+    def _extract_metrics(self, backends: list[LogBackend], stdout_text: str) -> None:
         casters = {"float": float, "int": int}
         for m in self.metrics:
             matches = re.findall(m.pattern, stdout_text)
@@ -888,7 +888,7 @@ class Runner:
                     val = raw
             else:
                 val = raw
-            for b in self.backends:
+            for b in backends:
                 b.set_metric(m.name, val)
 
 

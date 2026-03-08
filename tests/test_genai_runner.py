@@ -764,9 +764,8 @@ def test_log_files_skips_unset(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
     # Should not raise or try to upload
-    runner._log_files({"img": UNSET}, when="before")
+    runner._log_files([json_backend], {"img": UNSET}, when="before")
     assert json_backend.files_logged == []
 
 
@@ -891,8 +890,7 @@ def test_metric_float():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._extract_metrics("some output\nskipped=32.8%\ndone")
+    runner._extract_metrics([json_backend], "some output\nskipped=32.8%\ndone")
     assert json_backend.metrics["skip_pct"] == 32.8
 
 
@@ -903,8 +901,7 @@ def test_metric_str():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._extract_metrics("final: completed")
+    runner._extract_metrics([json_backend], "final: completed")
     assert json_backend.metrics["status"] == "completed"
 
 
@@ -913,8 +910,7 @@ def test_metric_last_match_wins():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._extract_metrics("x=1.0\nx=2.0\nx=3.0")
+    runner._extract_metrics([json_backend], "x=1.0\nx=2.0\nx=3.0")
     assert json_backend.metrics["val"] == 3.0
 
 
@@ -923,8 +919,7 @@ def test_metric_no_match():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._extract_metrics("no matches here")
+    runner._extract_metrics([json_backend], "no matches here")
     assert "val" not in json_backend.metrics
 
 
@@ -1168,8 +1163,7 @@ def test_log_extra_outputs_glob(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
-    runner._log_extra_outputs(tmp_path)
+    runner._log_extra_outputs([json_backend], tmp_path)
     # Should log 2 png files, not the txt
     logged = [f for f in json_backend.files_logged if f.get("log_as") == "image"]
     assert len(logged) == 2
@@ -1192,8 +1186,7 @@ def test_log_extra_outputs_glob_zip(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
-    runner._log_extra_outputs(tmp_path)
+    runner._log_extra_outputs([json_backend], tmp_path)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -1220,8 +1213,7 @@ def test_log_extra_outputs_dir_zip(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
-    runner._log_extra_outputs(tmp_path)
+    runner._log_extra_outputs([json_backend], tmp_path)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -1244,8 +1236,7 @@ def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
-    runner._log_extra_outputs(tmp_path)
+    runner._log_extra_outputs([json_backend], tmp_path)
     assert "matched no files" in capsys.readouterr().out
 
 
@@ -1264,8 +1255,7 @@ def test_log_extra_outputs_single_file(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
-    runner._log_extra_outputs(tmp_path)
+    runner._log_extra_outputs([json_backend], tmp_path)
     logged = [f for f in json_backend.files_logged if f.get("log_as") == "artifact"]
     assert len(logged) == 1
 
@@ -1290,9 +1280,8 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    runner.backends = [json_backend]
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        runner._log_extra_outputs(tmp_path)
+        runner._log_extra_outputs([json_backend], tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1478,8 +1467,7 @@ def test_extract_metrics_with_json_backend():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._extract_metrics("x=3.14")
+    runner._extract_metrics([json_backend], "x=3.14")
     assert json_backend.metrics["val"] == 3.14
 
 
@@ -1496,8 +1484,7 @@ def test_table_param_logged_to_json_backend():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._log_table_params({"prompt": "a cat", "seed": 42})
+    runner._log_table_params([json_backend], {"prompt": "a cat", "seed": 42})
     table = json_backend.tables["params"]
     assert table["columns"] == ["name", "value"]
     assert ["prompt", "a cat"] in table["data"]
@@ -1513,8 +1500,7 @@ def test_table_param_skips_unset():
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    runner.backends = [json_backend]
-    runner._log_table_params({"prompt": "a cat", "neg": None})
+    runner._log_table_params([json_backend], {"prompt": "a cat", "neg": None})
     table = json_backend.tables["params"]
     assert len(table["data"]) == 1
     assert table["data"][0] == ["prompt", "a cat"]
@@ -1524,8 +1510,7 @@ def test_table_param_no_table_params_skips():
     """No log_table call when no params have table=True."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     backend = MagicMock()
-    runner.backends = [backend]
-    runner._log_table_params({"seed": 42})
+    runner._log_table_params([backend], {"seed": 42})
     backend.log_table.assert_not_called()
 
 
