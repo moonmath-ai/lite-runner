@@ -18,6 +18,7 @@ import tarfile
 import threading
 import time
 import zipfile
+import git
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field
 from dataclasses import fields as dataclass_fields
@@ -949,25 +950,16 @@ def _zip_and_upload(
 
 
 def _collect_git_info() -> dict:
-    def git(*args: str) -> str:
-        return (
-            subprocess.check_output(  # noqa: S603
-                ["git", *args],  # noqa: S607
-                stderr=subprocess.DEVNULL,
-            )
-            .decode()
-            .strip()
-        )
-
     try:
-        return {
-            "repo": git("rev-parse", "--show-toplevel").rsplit("/", 1)[-1],
-            "commit": git("rev-parse", "HEAD"),
-            "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-            "dirty": git("status", "--porcelain", "--ignore-submodules=none") != "",
-        }
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        repo = git.Repo(search_parent_directories=True)
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
         return {}
+    return {
+        "repo": Path(repo.working_dir).name,
+        "commit": repo.head.commit.hexsha,
+        "branch": repo.active_branch.name if not repo.head.is_detached else "HEAD",
+        "dirty": repo.is_dirty(untracked_files=True, submodules=True),
+    }
 
 
 def _log_code_snapshot(
@@ -977,61 +969,39 @@ def _log_code_snapshot(
     if not git_info:
         return
 
+    try:
+        repo = git.Repo(search_parent_directories=True)
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        return
+
     code_dir = output_dir / "code"
     code_dir.mkdir(exist_ok=True)
 
-    def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(  # noqa: S603
-            ["git", *args],  # noqa: S607
-            capture_output=True,
-            check=False,
-            timeout=30,
-        )
-
-    # git archive: full snapshot of tracked files at HEAD (including submodules)
+    # git archive: full snapshot of tracked files at HEAD
     archive_path = code_dir / "source.tar.gz"
     tar_path = code_dir / "source.tar"
-    result = git("archive", "--format=tar", "-o", str(tar_path), "HEAD")
-    if result.returncode != 0:
-        msg = f"git archive failed: {result.stderr.decode()}"
-        raise RuntimeError(msg)
+    with tar_path.open("wb") as f:
+        repo.archive(f, format="tar")
 
     # Archive each submodule and append into the tar
-    sub_result = git(
-        "submodule",
-        "foreach",
-        "--recursive",
-        "--quiet",
-        "echo $displaypath",
-    )
-    if sub_result.returncode == 0 and sub_result.stdout.strip():
-        for sub_path in sub_result.stdout.decode().strip().splitlines():
-            sub_path = sub_path.strip()
-            if not sub_path:
-                continue
-            sub_tar = code_dir / "sub.tar"
-            r = git(
-                "-C",
-                sub_path,
-                "archive",
-                "--format=tar",
-                f"--prefix={sub_path}/",
-                "-o",
-                str(sub_tar),
-                "HEAD",
-            )
-            if r.returncode == 0 and sub_tar.exists():
-                # Append submodule tar entries into main tar
-                with (
-                    tarfile.open(tar_path, "a") as main_tf,
-                    tarfile.open(sub_tar) as sub_tf,
-                ):
-                    for member in sub_tf:
-                        main_tf.addfile(
-                            member,
-                            sub_tf.extractfile(member) if member.isfile() else None,
-                        )
-                sub_tar.unlink()
+    for submodule in repo.submodules:
+        try:
+            sub_repo = submodule.module()
+        except git.InvalidGitRepositoryError:
+            continue
+        sub_tar = code_dir / "sub.tar"
+        with sub_tar.open("wb") as f:
+            sub_repo.archive(f, format="tar", prefix=f"{submodule.path}/")
+        with (
+            tarfile.open(tar_path, "a") as main_tf,
+            tarfile.open(sub_tar) as sub_tf,
+        ):
+            for member in sub_tf:
+                main_tf.addfile(
+                    member,
+                    sub_tf.extractfile(member) if member.isfile() else None,
+                )
+        sub_tar.unlink()
 
     # Compress the combined tar
     with tar_path.open("rb") as f_in, gzip.open(archive_path, "wb") as f_out:
@@ -1041,10 +1011,10 @@ def _log_code_snapshot(
     # Dirty diff (staged + unstaged vs HEAD, including submodules)
     diff_path = None
     if git_info.get("dirty"):
-        diff_result = git("diff", "HEAD", "--submodule=diff")
-        if diff_result.returncode == 0 and diff_result.stdout:
+        diff_text = repo.git.diff("HEAD", submodule="diff")
+        if diff_text:
             diff_path = code_dir / "dirty.patch"
-            diff_path.write_bytes(diff_result.stdout)
+            diff_path.write_text(diff_text)
 
     # Record in all backends
     files = [str(archive_path)]

@@ -1262,13 +1262,13 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
 
 
 def test_git_info_returns_expected_keys():
-    outputs = [
-        b"/home/user/genai-runner\n",
-        b"abc123def456\n",
-        b"main\n",
-        b"",
-    ]
-    with patch("subprocess.check_output", side_effect=outputs):
+    mock_repo = MagicMock()
+    mock_repo.working_dir = "/home/user/genai-runner"
+    mock_repo.head.commit.hexsha = "abc123def456"
+    mock_repo.head.is_detached = False
+    mock_repo.active_branch.name = "main"
+    mock_repo.is_dirty.return_value = False
+    with patch("genai_runner.runner.git.Repo", return_value=mock_repo):
         info = _collect_git_info()
     assert info == {
         "repo": "genai-runner",
@@ -1279,19 +1279,22 @@ def test_git_info_returns_expected_keys():
 
 
 def test_git_info_dirty_flag():
-    outputs = [
-        b"/home/user/genai-runner\n",
-        b"abc123\n",
-        b"main\n",
-        b" M src/file.py\n",
-    ]
-    with patch("subprocess.check_output", side_effect=outputs):
+    mock_repo = MagicMock()
+    mock_repo.working_dir = "/home/user/genai-runner"
+    mock_repo.head.commit.hexsha = "abc123"
+    mock_repo.head.is_detached = False
+    mock_repo.active_branch.name = "main"
+    mock_repo.is_dirty.return_value = True
+    with patch("genai_runner.runner.git.Repo", return_value=mock_repo):
         assert _collect_git_info()["dirty"] is True
 
 
 def test_git_info_empty_outside_repo():
+    import git as gitmodule
+
     with patch(
-        "subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "git")
+        "genai_runner.runner.git.Repo",
+        side_effect=gitmodule.InvalidGitRepositoryError,
     ):
         assert _collect_git_info() == {}
 

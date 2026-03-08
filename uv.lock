@@ -123,6 +123,7 @@ name = "genai-runner"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "gitpython" },
     { name = "questionary" },
     { name = "wandb" },
 ]
@@ -134,6 +135,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gitpython", specifier = ">=3.1.46" },
     { name = "questionary" },
     { name = "wandb" },
 ]
