@@ -18,8 +18,8 @@ from genai_runner.backends import (
     log_files,
     log_table_params,
 )
-from genai_runner.params import RunFlags, _log_as_from_type
-from genai_runner.runner import _collect_git_info
+from genai_runner.params import _log_as_from_type
+from genai_runner.runner import RunFlags, _collect_git_info
 
 # ---------------------------------------------------------------------------
 # Helpers
