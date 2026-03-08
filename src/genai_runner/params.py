@@ -184,9 +184,21 @@ class Param:
 
     def ask(self, default: object = None) -> Any:
         """Interactively prompt the user for this param's value."""
+        if self.type == "bool":
+            return self._prompt_bool(default)
         if self.nargs is not None:
             return self._prompt_nargs(default)
         return self._prompt_single(default)
+
+    def _prompt_bool(self, default: object = None) -> bool:
+        label = self.help or self.name
+        answer = questionary.confirm(
+            f"{label}:", default=bool(default)
+        ).ask()
+        if answer is None:
+            print("Cancelled.", file=sys.stderr)
+            sys.exit(1)
+        return answer
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name

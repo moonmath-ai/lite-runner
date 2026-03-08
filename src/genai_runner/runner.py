@@ -295,14 +295,13 @@ class Runner:
         if no_interactive is None:
             no_interactive = new.run_flags.no_interactive
 
-        # Params eligible for prompting: non-fixed, non-bool,
+        # Params eligible for prompting: non-fixed,
         # not explicitly set via CLI or overrides
         promptable = [
             p
             for p in self.params
             if not p.is_fixed
             and p.prompt
-            and p.type != "bool"  # TODO: also ask for bool params
             and new.param_sources.get(p.name) not in ("cli", "override")
         ]
 

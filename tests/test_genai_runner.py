@@ -671,6 +671,58 @@ def test_no_prompt_param_accepts_cli_flag():
 
 
 # ---------------------------------------------------------------------------
+# Bool param prompting
+# ---------------------------------------------------------------------------
+
+
+def test_ask_user_prompts_bool_param():
+    """Bool params are prompted via questionary.confirm()."""
+    runner = _make_runner(params=[Param("turbo", type="bool")])
+    with patch("genai_runner.params.questionary") as mock_q:
+        mock_q.confirm.return_value.ask.return_value = True
+        r = runner.ask_user()
+    mock_q.confirm.assert_called_once_with("turbo:", default=False)
+    assert r.param_values["turbo"] is True
+    assert r.param_sources["turbo"] == "prompt"
+
+
+def test_ask_user_bool_false():
+    """Bool param answered False is logged."""
+    runner = _make_runner(params=[Param("turbo", type="bool")])
+    with patch("genai_runner.params.questionary") as mock_q:
+        mock_q.confirm.return_value.ask.return_value = False
+        r = runner.ask_user()
+    assert r.param_values["turbo"] is False
+
+
+def test_ask_user_bool_skips_cli_provided():
+    """Bool param set via CLI is not re-prompted."""
+    runner = _make_runner(params=[Param("turbo", type="bool")])
+    r = runner.parse_cli(["--turbo"])
+    with patch("genai_runner.params.questionary") as mock_q:
+        r = r.ask_user()
+    mock_q.confirm.assert_not_called()
+    assert r.param_values["turbo"] is True
+
+
+def test_ask_user_bool_cancel_exits():
+    """Cancelling a bool prompt exits."""
+    runner = _make_runner(params=[Param("turbo", type="bool")])
+    with patch("genai_runner.params.questionary") as mock_q:
+        mock_q.confirm.return_value.ask.return_value = None
+        with pytest.raises(SystemExit, match="1"):
+            runner.ask_user()
+
+
+def test_bool_param_logged_in_config():
+    """Bool param value appears in run config (via JsonBackend)."""
+    runner = _make_runner(params=[Param("turbo", type="bool")])
+    r = runner.parse_cli(["--turbo"])
+    r = r.resolve_defaults()
+    assert r.param_values["turbo"] is True
+
+
+# ---------------------------------------------------------------------------
 # Skip param (type '-' to omit from command)
 # ---------------------------------------------------------------------------
 
