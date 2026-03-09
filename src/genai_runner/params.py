@@ -55,6 +55,12 @@ class _Unset:
     def __repr__(self) -> str:
         return "<unset>"
 
+    def __deepcopy__(self, memo: dict[int, object]) -> _Unset:
+        return self
+
+    def __copy__(self) -> _Unset:
+        return self
+
 
 UNSET = _Unset()
 
