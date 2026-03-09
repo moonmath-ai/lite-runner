@@ -62,6 +62,20 @@ def _ensure_logging() -> None:
 
 
 @dataclass(frozen=True)
+class RunResult:
+    """Result of a :meth:`Runner.run` call."""
+
+    output_dir: Path
+    exit_code: int
+    duration: float
+    run_name: str
+    project: str
+    config: dict[str, object]
+    param_values: dict[str, object]
+    param_sources: dict[str, str]
+
+
+@dataclass(frozen=True)
 class RunFlags:
     """CLI flags that control runner behavior (not model params)."""
 
@@ -373,13 +387,15 @@ class Runner:
         no_wandb: bool | None = None,
         project: str | None = None,
         run_name: str | None = None,
-    ) -> None:
+    ) -> RunResult:
         """Execute the full run lifecycle.
 
         Auto-calls :meth:`parse_cli`, :meth:`resolve_defaults`, and
         :meth:`ask_user` for any steps not yet applied.
 
         Keyword args override CLI flags (with warnings on contradiction).
+
+        Returns a :class:`RunResult` with output_dir, exit_code, etc.
         """
         _ensure_logging()
         r = self
@@ -539,9 +555,22 @@ class Runner:
             aborted=aborted,
             dry_run=flags.dry_run,
         )
+        result = RunResult(
+            output_dir=output_dir,
+            exit_code=exit_code,
+            duration=duration,
+            run_name=run_name or "run",
+            project=project,
+            config=config,
+            param_values=r.param_values,
+            param_sources=r.param_sources,
+        )
+
         if aborted or exit_code:
             logger.error("Aborting run due to aborted or failed exit code")
             sys.exit(1)
+
+        return result
 
     def post_run(
         self,

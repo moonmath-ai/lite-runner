@@ -4,7 +4,7 @@ import logging
 
 from .backends import JsonBackend, LogBackend, WandbBackend
 from .params import UNSET, Metric, Output, Param, ParamType
-from .runner import Runner
+from .runner import Runner, RunResult
 
 logging.getLogger("genai_runner").addHandler(logging.NullHandler())
 
@@ -16,6 +16,7 @@ __all__ = [
     "Output",
     "Param",
     "ParamType",
+    "RunResult",
     "Runner",
     "WandbBackend",
 ]
