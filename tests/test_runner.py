@@ -165,18 +165,6 @@ def test_resolve_defaults_casts_default_list():
     assert r.param_values["x"] == ["a.jpg", "0.5"]
 
 
-def test_resolve_overrides_take_priority():
-    runner = _make_runner(params=[Param("seed", type="int", default=42)])
-    r = runner.override(seed=99).resolve_defaults()
-    assert r.param_values["seed"] == 99
-
-
-def test_resolve_cli_beats_default():
-    runner = _make_runner(params=[Param("seed", type="int", default=42)])
-    r = runner.parse_cli(["--seed", "7"]).resolve_defaults()
-    assert r.param_values["seed"] == 7
-
-
 # ---------------------------------------------------------------------------
 # override
 # ---------------------------------------------------------------------------

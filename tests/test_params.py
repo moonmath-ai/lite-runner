@@ -13,32 +13,20 @@ from genai_runner.params import _log_as_from_type
 # ---------------------------------------------------------------------------
 
 
-def test_log_as_from_type_path_image():
-    assert _log_as_from_type("path-image") == "image"
-
-
-def test_log_as_from_type_path_video():
-    assert _log_as_from_type("path-video") == "video"
-
-
-def test_log_as_from_type_path_artifact():
-    assert _log_as_from_type("path-artifact") == "artifact"
-
-
-def test_log_as_from_type_path_text():
-    assert _log_as_from_type("path-text") == "text"
-
-
-def test_log_as_from_type_plain_path():
-    assert _log_as_from_type("path") is None
-
-
-def test_log_as_from_type_str():
-    assert _log_as_from_type("str") is None
-
-
-def test_log_as_from_type_int():
-    assert _log_as_from_type("int") is None
+@pytest.mark.parametrize(
+    ("type_str", "expected"),
+    [
+        ("path-image", "image"),
+        ("path-video", "video"),
+        ("path-artifact", "artifact"),
+        ("path-text", "text"),
+        ("path", None),
+        ("str", None),
+        ("int", None),
+    ],
+)
+def test_log_as_from_type(type_str, expected):
+    assert _log_as_from_type(type_str) == expected
 
 
 # ---------------------------------------------------------------------------

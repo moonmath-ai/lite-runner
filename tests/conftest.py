@@ -36,7 +36,5 @@ def _clean_argv():
         yield
 
 
-def _make_runner(params=None, **kwargs):
-    return Runner(
-        command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
-    )
+def _make_runner(params=None, command="echo hello", **kwargs):
+    return Runner(command=command, params=params or [], **kwargs)

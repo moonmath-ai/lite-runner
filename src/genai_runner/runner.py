@@ -452,12 +452,12 @@ class Runner:
 
         # Save code snapshot (git archive + dirty diff)
         pre_run_files = []
-        for name, preparer in [
-            ("code archive", lambda: prepare_code_archive(output_dir)),
-            ("code diff", lambda: prepare_code_diff(output_dir)),
+        for name, fn in [
+            ("code archive", prepare_code_archive),
+            ("code diff", prepare_code_diff),
         ]:
             try:
-                pre_run_files.extend(preparer())
+                pre_run_files.extend(fn(output_dir))
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {name} failed: {e}")
 
@@ -617,8 +617,9 @@ class Runner:
             val = param_values.get(p.name)
             if val is UNSET:
                 continue
-            assert val is not None
-            assert p.flag is not None
+            if val is None or p.flag is None:
+                msg = f"Param {p.name!r} missing value or flag in build_command"
+                raise RuntimeError(msg)
             if p.type == "bool" and not val:
                 continue
             clr = _SOURCE_COLORS.get(param_sources.get(p.name, ""), "") if color else ""
@@ -746,20 +747,19 @@ _SOURCE_COLORS = {
 }
 
 
+def _subst_output(v: object, out: str) -> object:
+    return v.replace("$output", out) if isinstance(v, str) else v
+
+
 def _interpolate_output(params: dict, output_dir: Path) -> dict:
     """Return a copy of *params* with $output replaced in string values."""
     out = str(output_dir)
-    result = {}
-    for k, v in params.items():
-        if isinstance(v, list):
-            result[k] = [
-                x.replace("$output", out) if isinstance(x, str) else x for x in v
-            ]
-        elif isinstance(v, str):
-            result[k] = v.replace("$output", out)
-        else:
-            result[k] = v
-    return result
+    return {
+        k: [_subst_output(x, out) for x in v]
+        if isinstance(v, list)
+        else _subst_output(v, out)
+        for k, v in params.items()
+    }
 
 
 def _collect_git_info() -> dict:

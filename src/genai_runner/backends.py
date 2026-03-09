@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Log item types (collect phase returns these, dispatch phase sends to backends)
+# Log item types (collect phase returns these)
 # ---------------------------------------------------------------------------
 
 
@@ -161,6 +161,7 @@ class JsonBackend:
         self.metrics[name] = value
 
     def set_summary(self, summary: dict) -> None:
+        assert not self.summary, "set_summary called twice"
         self.summary = summary
 
     def set_tags(self, tags: list[str]) -> None:
@@ -222,6 +223,8 @@ class DryRunBackend:
 # Collectors (collect_*: non-mutating) and preparers (prepare_*: create files)
 # ---------------------------------------------------------------------------
 
+_METRIC_CASTERS = {"float": float, "int": int}
+
 
 def collect_metrics(
     metrics: list[Metric],
@@ -231,20 +234,15 @@ def collect_metrics(
 
     Returns list of (name, value) pairs.
     """
-    casters = {"float": float, "int": int}
     items: list[tuple[str, object]] = []
     for m in metrics:
         matches = re.findall(m.pattern, stdout_text)
         if not matches:
             continue
         raw = matches[-1]  # last match wins
-        caster = casters.get(m.type)
-        if caster is not None:
-            try:
-                val = caster(raw)
-            except ValueError:
-                val = raw
-        else:
+        try:
+            val = _METRIC_CASTERS[m.type](raw)
+        except (KeyError, ValueError):
             val = raw
         items.append((m.name, val))
     return items
@@ -348,12 +346,11 @@ def prepare_extra_outputs(
 
 def collect_run_logs(output_dir: Path) -> list[LogFile]:
     """Collect run/stdout/stderr log files."""
-    items: list[LogFile] = []
-    for name in ("run.log", "stdout.log", "stderr.log"):
-        path = output_dir / name
-        if path.exists():
-            items.append(LogFile(path, "text", key=name))
-    return items
+    return [
+        LogFile(path, "text", key=name)
+        for name in ("run.log", "stdout.log", "stderr.log")
+        if (path := output_dir / name).exists()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -376,14 +373,21 @@ def create_zip(
     return zip_path
 
 
+def _open_repo() -> git.Repo | None:
+    """Open the enclosing git repo, or return None."""
+    try:
+        return git.Repo(search_parent_directories=True)
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        return None
+
+
 def create_repo_archive(output_dir: Path) -> Path | None:
     """Create git archive (tar.gz) of tracked files at HEAD.
 
     Returns the archive path, or None if not in a git repo.
     """
-    try:
-        repo = git.Repo(search_parent_directories=True)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+    repo = _open_repo()
+    if repo is None:
         return None
 
     code_dir = output_dir / "code"
@@ -416,7 +420,7 @@ def create_repo_archive(output_dir: Path) -> Path | None:
 
     # Compress the combined tar
     with tar_path.open("rb") as f_in, gzip.open(archive_path, "wb") as f_out:
-        f_out.writelines(f_in)
+        shutil.copyfileobj(f_in, f_out)
     tar_path.unlink()
 
     return archive_path
@@ -427,9 +431,8 @@ def create_repo_diff(output_dir: Path) -> Path | None:
 
     Returns the patch path, or None if repo is clean or not in a git repo.
     """
-    try:
-        repo = git.Repo(search_parent_directories=True)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+    repo = _open_repo()
+    if repo is None:
         return None
 
     if not repo.is_dirty(untracked_files=True, submodules=True):
