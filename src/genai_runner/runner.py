@@ -46,20 +46,19 @@ from .params import (
 
 RUNS_DIR = Path.home() / "genai_runs"
 
-logger = logging.getLogger("genai_runner")
+logger = logging.getLogger(__name__)
 
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _ensure_logging() -> None:
     """Set up a default handler if none configured (besides NullHandler)."""
-    if not any(h for h in logger.handlers if not isinstance(h, logging.NullHandler)):
+    root = logging.getLogger("genai_runner")
+    if not any(h for h in root.handlers if not isinstance(h, logging.NullHandler)):
         handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(
-            logging.Formatter("\033[36mgenai-runner:\033[0m %(message)s")
-        )
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("\033[36m%(name)s:\033[0m %(message)s"))
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
 
 
 @dataclass(frozen=True)

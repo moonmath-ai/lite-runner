@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 VideoFormat = Literal["gif", "mp4", "webm", "ogg"]
 
-logger = logging.getLogger("genai_runner")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +196,9 @@ class JsonBackend:
         )
 
 
+_dry_run_logger = logging.getLogger("genai_runner.dry_run")
+
+
 class DryRunBackend:
     """Log backend that does nothing."""
 
@@ -208,29 +211,29 @@ class DryRunBackend:
         config: dict[str, object],
     ) -> None:
         self.run_name = name or "dry_run"
-        logger.info("[dry-run] Project: %s", project)
-        logger.info("[dry-run] Name: %s", self.run_name)
-        logger.info("[dry-run] Group: %s", group)
-        logger.info("[dry-run] Tags: %s", tags)
-        logger.info("[dry-run] Config: %s", config)
+        _dry_run_logger.info("Project: %s", project)
+        _dry_run_logger.info("Name: %s", self.run_name)
+        _dry_run_logger.info("Group: %s", group)
+        _dry_run_logger.info("Tags: %s", tags)
+        _dry_run_logger.info("Config: %s", config)
 
     def update_config(self, updates: dict[str, object]) -> None:
-        logger.info("[dry-run] Updating config: %s", updates)
+        _dry_run_logger.info("Updating config: %s", updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
-        logger.info("[dry-run] Logging file: %s as %s as %s", path, log_as, key)
+        _dry_run_logger.info("Logging file: %s as %s as %s", path, log_as, key)
 
     def set_metric(self, name: str, value: object) -> None:
-        logger.info("[dry-run] Setting metric: %s to %s", name, value)
+        _dry_run_logger.info("Setting metric: %s to %s", name, value)
 
     def set_summary(self, summary: dict[str, object]) -> None:
-        logger.info("[dry-run] Setting summary: %s", summary)
+        _dry_run_logger.info("Setting summary: %s", summary)
 
     def set_tags(self, tags: list[str]) -> None:
-        logger.info("[dry-run] Setting tags: %s", tags)
+        _dry_run_logger.info("Setting tags: %s", tags)
 
     def finish(self, exit_code: int) -> None:
-        logger.info("[dry-run] Finishing with exit code: %s", exit_code)
+        _dry_run_logger.info("Finishing with exit code: %s", exit_code)
 
 
 # ---------------------------------------------------------------------------

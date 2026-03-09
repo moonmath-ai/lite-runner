@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 import questionary
 
-logger = logging.getLogger("genai_runner")
+logger = logging.getLogger(__name__)
 
 ParamType = Literal[
     "str",

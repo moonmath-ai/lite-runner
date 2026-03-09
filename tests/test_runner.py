@@ -682,7 +682,7 @@ def test_dry_run_prints_command_no_wandb(caplog):
     ):
         r.run(dry_run=True, no_interactive=True)
     out = re.sub(r"\033\[[0-9;]*m", "", caplog.text)
-    assert "[dry-run]" in out
+    assert "dry_run" in out
     assert "--prompt test" in out
     assert "--seed 42" in out
     assert "$output/video.mp4" in out
