@@ -176,7 +176,7 @@ def test_unknown_param_type_in_list_raises():
 
 
 def test_bool_in_type_list_raises():
-    with pytest.raises(ValueError, match="bool.*cannot.*multi-value"):
+    with pytest.raises(ValueError, match=r"bool.*cannot.*multi-value"):
         Param("x", type=["bool", "float"])
 
 

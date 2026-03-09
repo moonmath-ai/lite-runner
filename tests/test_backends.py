@@ -20,8 +20,8 @@ from genai_runner.backends import (
 
 
 def test_split_glob_star():
-    base, pattern = _split_glob("/tmp/output/frames/*.jpg")
-    assert base == Path("/tmp/output/frames")
+    base, pattern = _split_glob("/fake/output/frames/*.jpg")
+    assert base == Path("/fake/output/frames")
     assert pattern == "*.jpg"
 
 
@@ -32,8 +32,8 @@ def test_split_glob_doublestar():
 
 
 def test_split_glob_question():
-    base, pattern = _split_glob("/tmp/file?.txt")
-    assert base == Path("/tmp")
+    base, pattern = _split_glob("/fake/file?.txt")
+    assert base == Path("/fake")
     assert pattern == "file?.txt"
 
 

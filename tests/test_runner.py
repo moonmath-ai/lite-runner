@@ -94,7 +94,7 @@ def test_param_name_conflicts_with_builtin_flag():
 
 
 # ---------------------------------------------------------------------------
-# resolve_defaults()
+# resolve_defaults
 # ---------------------------------------------------------------------------
 
 
@@ -178,7 +178,7 @@ def test_resolve_cli_beats_default():
 
 
 # ---------------------------------------------------------------------------
-# override()
+# override
 # ---------------------------------------------------------------------------
 
 
@@ -250,7 +250,7 @@ def test_override_run_skips_prompting(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# with_metadata()
+# with_metadata
 # ---------------------------------------------------------------------------
 
 
@@ -283,7 +283,7 @@ def test_with_metadata_partial():
 
 
 # ---------------------------------------------------------------------------
-# ask_user()
+# ask_user
 # ---------------------------------------------------------------------------
 
 
@@ -341,10 +341,10 @@ def test_ask_user_path_image_uses_path_widget():
     """path-image type should use questionary.path() widget."""
     runner = _make_runner(params=[Param("img", type="path-image")])
     with patch("genai_runner.params.questionary") as mock_q:
-        mock_q.path.return_value.ask.return_value = "/tmp/photo.jpg"
+        mock_q.path.return_value.ask.return_value = "/fake/photo.jpg"
         r = runner.ask_user()
     mock_q.path.assert_called_once()
-    assert r.param_values["img"] == "/tmp/photo.jpg"
+    assert r.param_values["img"] == "/fake/photo.jpg"
 
 
 def test_ask_user_cancel_exits():
@@ -625,7 +625,7 @@ def test_execute_env_none_removes_var(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_run_kwargs_override_defaults(tmp_path):
+def test_run_kwargs_override_defaults():
     """run(dry_run=True) works without CLI flags."""
     runner = Runner(
         command="python gen.py",
