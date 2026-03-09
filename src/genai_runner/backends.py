@@ -10,7 +10,7 @@ import tarfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import git
 
@@ -20,6 +20,8 @@ from .params import UNSET, _log_as_from_type
 
 if TYPE_CHECKING:
     from .params import Metric, Output, Param
+
+VideoFormat = Literal["gif", "mp4", "webm", "ogg"]
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +95,9 @@ class WandbBackend:
 
     @property
     def run_url(self) -> str:
-        return self.run.url
+        url = self.run.url
+        assert url is not None
+        return url
 
     def update_config(self, updates: dict[str, object]) -> None:
         self.run.config.update(updates)
@@ -102,7 +106,7 @@ class WandbBackend:
         if log_as == "artifact":
             self.run.log_artifact(path, name=f"{key}-{self.run.id}", type=key)
         elif log_as == "video":
-            fmt = path.suffix.lstrip(".")
+            fmt = _video_format(path)
             self.run.log({key: wandb.Video(str(path), format=fmt)})
         elif log_as == "image":
             self.run.log({key: wandb.Image(str(path))})
@@ -142,14 +146,16 @@ class JsonBackend:
             "group": group,
             "tags": list(tags),
         }
-        self.config = dict(config)
-        self.metrics = {}
-        self.summary = {}
-        self.files_logged = []
+        self.config: dict[str, object] = dict(config)
+        self.metrics: dict[str, object] = {}
+        self.summary: dict[str, object] = {}
+        self.files_logged: list[dict[str, str]] = []
 
     @property
     def run_name(self) -> str:
-        return self.metadata["name"]
+        name = self.metadata["name"]
+        assert isinstance(name, str)
+        return name
 
     def update_config(self, updates: dict[str, object]) -> None:
         self.config.update(updates)
@@ -168,7 +174,9 @@ class JsonBackend:
         self.metadata["tags"] = tags
 
     def finish(self, exit_code: int) -> None:
-        output_dir = Path(self.config["meta/output_dir"])
+        output_dir_val = self.config["meta/output_dir"]
+        assert isinstance(output_dir_val, str)
+        output_dir = Path(output_dir_val)
         run_info = {
             "metadata": self.metadata,
             "config": self.config,
@@ -468,6 +476,24 @@ def prepare_code_diff(output_dir: Path) -> list[LogFile]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+_VIDEO_FORMATS: dict[str, VideoFormat] = {
+    "gif": "gif",
+    "mp4": "mp4",
+    "webm": "webm",
+    "ogg": "ogg",
+}
+
+
+def _video_format(path: Path) -> VideoFormat:
+    """Extract and validate video format from file extension."""
+    fmt = path.suffix.lstrip(".")
+    result = _VIDEO_FORMATS.get(fmt)
+    if result is None:
+        msg = f"Unsupported video format '{fmt}' for {path}"
+        raise ValueError(msg)
+    return result
 
 
 def _split_glob(path_str: str) -> tuple[Path, str]:

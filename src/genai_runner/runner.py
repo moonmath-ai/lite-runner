@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable, Sequence
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -24,6 +25,7 @@ from .backends import (
     DryRunBackend,
     JsonBackend,
     LogBackend,
+    LogFile,
     WandbBackend,
     collect_metrics,
     collect_param_files,
@@ -61,9 +63,8 @@ class RunFlags:
         return cls(**{f.name: getattr(ns, f.name, None) for f in fields(cls)})
 
     def merge(self, **overrides: object) -> RunFlags:
-        """Return a new RunFlags with *overrides* applied.
+        """Return a new RunFlags with non-None overrides applied.
 
-        ``None`` values in *overrides* are ignored (no change).
         Warns when an override contradicts a previously set flag.
         """
         updates: dict[str, object] = {}
@@ -78,7 +79,7 @@ class RunFlags:
                     file=sys.stderr,
                 )
             updates[field_name] = value
-        return replace(self, **updates) if updates else self
+        return replace(self, **updates) if updates else self  # type: ignore[arg-type]
 
 
 @dataclass
@@ -182,7 +183,8 @@ class Runner:
                 if param.type == "bool":
                     # differentiate explicit False from implicit False
                     param_kwargs["default"] = None
-                parser.add_argument(param.flag, **param_kwargs)
+                assert param.flag is not None
+                parser.add_argument(param.flag, **param_kwargs)  # type: ignore[arg-type]
 
         return parser
 
@@ -388,7 +390,9 @@ class Runner:
 
         # Git info and project
         git_info = _collect_git_info()
-        project = flags.project or r.project or git_info.get("repo")
+        repo_name = git_info.get("repo")
+        assert repo_name is None or isinstance(repo_name, str)
+        project = flags.project or r.project or repo_name
         if project is None:
             msg = "Cannot determine project name: set project= or run from a git repo"
             raise ValueError(msg)
@@ -405,7 +409,7 @@ class Runner:
         config["meta/command"] = shlex.join(r.command)
 
         # Init WandbBackend first (needs to happen early to get run_name)
-        backend_classes = []
+        backend_classes: list[type[WandbBackend | JsonBackend | DryRunBackend]] = []
         if flags.dry_run:
             backend_classes.append(DryRunBackend)
         else:
@@ -414,7 +418,7 @@ class Runner:
             backend_classes.append(JsonBackend)
 
         run_name = flags.run_name
-        backends = {}
+        backends: dict[type, WandbBackend | JsonBackend | DryRunBackend] = {}
         for backend_class in backend_classes:
             backends[backend_class] = backend_class(
                 project=project,
@@ -438,9 +442,11 @@ class Runner:
             backend.update_config({"meta/output_dir": config["meta/output_dir"]})
 
         # W&B url:
-        config["wandb/url"] = (
-            backends[WandbBackend].run_url if WandbBackend in backends else "(no wandb)"
-        )
+        wb_backend = backends.get(WandbBackend)
+        if isinstance(wb_backend, WandbBackend):
+            config["wandb/url"] = wb_backend.run_url
+        else:
+            config["wandb/url"] = "(no wandb)"
         for backend in backend_list:
             if not isinstance(backend, WandbBackend):
                 backend.update_config({"wandb/url": config["wandb/url"]})
@@ -515,7 +521,7 @@ class Runner:
 
     def post_run(
         self,
-        backends: list[LogBackend],
+        backends: Sequence[LogBackend],
         param_values: dict[str, object],
         output_dir: Path,
         exit_code: int,
@@ -552,7 +558,7 @@ class Runner:
 
         # Collect/prepare files
         files = []
-        file_steps: list[tuple[str, object]] = [
+        file_steps: list[tuple[str, Callable[[], list[LogFile]]]] = [
             (
                 "output files",
                 lambda: collect_param_files(self.params, param_values, when="after"),
@@ -612,7 +618,8 @@ class Runner:
         for display — join with ``" ".join()`` to print.
         """
         color = param_sources is not None
-        cmd = self.command[:]
+        assert isinstance(self.command, list)
+        cmd: list[str] = self.command[:]
         for p in self.params:
             val = param_values.get(p.name)
             if val is UNSET:
@@ -622,17 +629,22 @@ class Runner:
                 raise RuntimeError(msg)
             if p.type == "bool" and not val:
                 continue
-            clr = _SOURCE_COLORS.get(param_sources.get(p.name, ""), "") if color else ""
+            clr = (
+                _SOURCE_COLORS.get(param_sources.get(p.name, ""), "")
+                if param_sources
+                else ""
+            )
             rst = _RST if color else ""
             bold = _BOLD if color else ""
             cmd.append(f"{clr}{p.flag}{rst}")
             if p.type == "bool":
                 continue
-            values = val if isinstance(val, list) else [val]
+            val_list = val if isinstance(val, list) else [val]
             if color:
-                values = [shlex.quote(str(v)) for v in values]
-            values = [f"{bold}{clr}{v}{rst}" for v in values]
-            cmd.extend(values)
+                val_strs = [shlex.quote(str(v)) for v in val_list]
+            else:
+                val_strs = [str(v) for v in val_list]
+            cmd.extend(f"{bold}{clr}{v}{rst}" for v in val_strs)
         return cmd
 
     # -----------------------------------------------------------------------
@@ -676,10 +688,12 @@ class Runner:
             log_stdout = stack.enter_context((output_dir / "stdout.log").open("w"))
             log_stderr = stack.enter_context((output_dir / "stderr.log").open("w"))
 
-            run_env = {**os.environ, **self.env}
+            run_env: dict[str, str] = {**os.environ}
             for k, v in self.env.items():
                 if v is None:
                     run_env.pop(k, None)
+                else:
+                    run_env[k] = v
             if "COLUMNS" not in run_env:
                 with suppress(OSError):
                     run_env["COLUMNS"] = str(os.get_terminal_size().columns)

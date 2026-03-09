@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -46,6 +47,15 @@ _SKIP_INPUT = "-"
 
 def _ask_or_exit(widget: questionary.Question) -> str:
     """Ask a questionary widget, exit on cancel (None)."""
+    answer = widget.ask()
+    if answer is None:
+        print("Cancelled.", file=sys.stderr)
+        sys.exit(1)
+    return answer
+
+
+def _confirm_or_exit(widget: questionary.Question) -> bool:
+    """Ask a confirm widget, exit on cancel (None)."""
     answer = widget.ask()
     if answer is None:
         print("Cancelled.", file=sys.stderr)
@@ -177,12 +187,13 @@ class Param:
                     f"{self.help or ''} ({' '.join(self.labels)})"
                 ).strip()
         else:
+            assert isinstance(self.type, str)
             kwargs["type"] = _PARAM_TYPE_MAP[self.type]
         if self.choices:
             kwargs["choices"] = self.choices
         return kwargs
 
-    def cast_nargs(self, values: list[object]) -> list[object]:
+    def cast_nargs(self, values: Sequence[object]) -> list[object]:
         """Cast each element in *values* according to this param's type list."""
         types = self.type_list
         if len(values) != len(types):
@@ -202,7 +213,7 @@ class Param:
 
     def _prompt_bool(self, default: object = None) -> bool:
         label = self.help or self.name
-        return _ask_or_exit(questionary.confirm(f"{label}:", default=bool(default)))
+        return _confirm_or_exit(questionary.confirm(f"{label}:", default=bool(default)))
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name
@@ -221,13 +232,16 @@ class Param:
         if answer == _SKIP_INPUT:
             return UNSET
 
+        assert isinstance(self.type, str)
         caster = _PARAM_TYPE_MAP.get(self.type, str)
         return caster(answer)
 
-    def _prompt_nargs(self, default: object = None) -> list | _Unset:
-        labels = self.labels or [f"{self.name}[{i}]" for i in range(self.nargs)]
+    def _prompt_nargs(self, default: object = None) -> list[object] | _Unset:
+        nargs = self.nargs
+        assert nargs is not None, "_prompt_nargs called without nargs"
+        labels = self.labels or [f"{self.name}[{i}]" for i in range(nargs)]
         element_types = self.type_list
-        defaults = default if isinstance(default, list) else [None] * self.nargs
+        defaults = default if isinstance(default, list) else [None] * nargs
         parts = []
         for label, etype, d in zip(labels, element_types, defaults, strict=True):
             default_str = str(d) if d is not None else ""
