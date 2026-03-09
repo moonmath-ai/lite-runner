@@ -238,7 +238,7 @@ class Param:
         else:
             answer = _ask_or_exit(questionary.text(f"{label}:", default=default_str))
 
-        if answer == _SKIP_INPUT:
+        if answer in (_SKIP_INPUT, ""):
             return UNSET
 
         assert isinstance(self.type, str)
@@ -259,7 +259,7 @@ class Param:
             else:
                 widget = questionary.text(f"{self.name} {label}:", default=default_str)
             answer = _ask_or_exit(widget)
-            if answer == _SKIP_INPUT:
+            if answer in (_SKIP_INPUT, ""):
                 return UNSET
             parts.append(answer)
         return self.cast_nargs(parts)
