@@ -7,10 +7,14 @@ import pytest
 
 from genai_runner import UNSET, JsonBackend, Metric, Output, Param
 from genai_runner.backends import (
+    LogFile,
+    LogMetric,
     _split_glob,
-    extract_metrics,
-    log_extra_outputs,
-    log_files,
+    collect_extra_outputs,
+    collect_metrics,
+    collect_param_files,
+    collect_run_logs,
+    dispatch_log_items,
 )
 
 # ---------------------------------------------------------------------------
@@ -37,64 +41,65 @@ def test_split_glob_question():
 
 
 # ---------------------------------------------------------------------------
-# Metric extraction
+# Metric extraction (collect_metrics)
 # ---------------------------------------------------------------------------
 
 
 def test_metric_float():
     metrics = [Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    extract_metrics([json_backend], metrics, "some output\nskipped=32.8%\ndone")
-    assert json_backend.metrics["skip_pct"] == 32.8
+    items = collect_metrics(metrics, "some output\nskipped=32.8%\ndone")
+    assert items == [LogMetric("skip_pct", 32.8)]
 
 
 def test_metric_str():
     metrics = [Metric("status", pattern=r"final: (\w+)", type="str")]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    extract_metrics([json_backend], metrics, "final: completed")
-    assert json_backend.metrics["status"] == "completed"
+    items = collect_metrics(metrics, "final: completed")
+    assert items == [LogMetric("status", "completed")]
 
 
 def test_metric_last_match_wins():
     metrics = [Metric("val", pattern=r"x=([\d.]+)")]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    extract_metrics([json_backend], metrics, "x=1.0\nx=2.0\nx=3.0")
-    assert json_backend.metrics["val"] == 3.0
+    items = collect_metrics(metrics, "x=1.0\nx=2.0\nx=3.0")
+    assert items == [LogMetric("val", 3.0)]
 
 
 def test_metric_no_match():
     metrics = [Metric("val", pattern=r"x=([\d.]+)")]
+    items = collect_metrics(metrics, "no matches here")
+    assert items == []
+
+
+def test_collect_metrics_multiple():
+    """Multiple metrics are collected independently."""
+    metrics = [
+        Metric("val", pattern=r"x=([\d.]+)"),
+        Metric("status", pattern=r"final: (\w+)", type="str"),
+    ]
+    items = collect_metrics(metrics, "x=3.14\nfinal: done")
+    assert len(items) == 2
+    assert items[0] == LogMetric("val", 3.14)
+    assert items[1] == LogMetric("status", "done")
+
+
+# ---------------------------------------------------------------------------
+# dispatch_log_items
+# ---------------------------------------------------------------------------
+
+
+def test_dispatch_metrics_to_json_backend():
+    """LogMetric items are dispatched to backends correctly."""
     json_backend = JsonBackend(
         project="test", name=None, group=None, tags=[], config={}
     )
-    extract_metrics([json_backend], metrics, "no matches here")
-    assert "val" not in json_backend.metrics
-
-
-def test_extract_metrics_with_json_backend():
-    """Metrics are extracted into JsonBackend."""
-    metrics = [Metric("val", pattern=r"x=([\d.]+)")]
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    extract_metrics([json_backend], metrics, "x=3.14")
+    items = [LogMetric("val", 3.14)]
+    dispatch_log_items([json_backend], items)
     assert json_backend.metrics["val"] == 3.14
 
 
-# ---------------------------------------------------------------------------
-# log_files
-# ---------------------------------------------------------------------------
-
-
-def test_log_files_skips_unset(tmp_path):
-    """log_files skips params whose value is UNSET."""
-    params = [Param("img", type="path-image")]
+def test_dispatch_files_to_json_backend(tmp_path):
+    """LogFile items are dispatched to backends correctly."""
+    f = tmp_path / "test.txt"
+    f.write_text("hello")
     json_backend = JsonBackend(
         project="test",
         name=None,
@@ -102,52 +107,50 @@ def test_log_files_skips_unset(tmp_path):
         tags=[],
         config={"meta/output_dir": str(tmp_path)},
     )
-    # Should not raise or try to upload
-    log_files([json_backend], params, {"img": UNSET}, when="before")
-    assert json_backend.files_logged == []
+    items = [LogFile(f, "text", "test")]
+    dispatch_log_items([json_backend], items)
+    assert len(json_backend.files_logged) == 1
+    assert json_backend.files_logged[0]["key"] == "test"
 
 
 # ---------------------------------------------------------------------------
-# Output glob + zip
+# collect_param_files
 # ---------------------------------------------------------------------------
 
 
-def test_log_extra_outputs_glob(tmp_path):
-    """Glob pattern expands and uploads each matched file."""
+def test_collect_param_files_skips_unset():
+    """collect_param_files skips params whose value is UNSET."""
+    params = [Param("img", type="path-image")]
+    items = collect_param_files(params, {"img": UNSET}, when="before")
+    assert items == []
+
+
+# ---------------------------------------------------------------------------
+# Output glob + zip (collect_extra_outputs)
+# ---------------------------------------------------------------------------
+
+
+def test_collect_extra_outputs_glob(tmp_path):
+    """Glob pattern expands and collects each matched file."""
     (tmp_path / "frames").mkdir()
     (tmp_path / "frames" / "001.png").write_text("a")
     (tmp_path / "frames" / "002.png").write_text("b")
     (tmp_path / "frames" / "skip.txt").write_text("c")
 
     outputs = [Output("$output/frames/*.png", log_as="image")]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    log_extra_outputs([json_backend], outputs, tmp_path)
-    # Should log 2 png files, not the txt
-    logged = [f for f in json_backend.files_logged if f.get("log_as") == "image"]
-    assert len(logged) == 2
+    items = collect_extra_outputs(outputs, tmp_path)
+    image_items = [i for i in items if i.log_as == "image"]
+    assert len(image_items) == 2
 
 
-def test_log_extra_outputs_glob_zip(tmp_path):
+def test_collect_extra_outputs_glob_zip(tmp_path):
     """Glob + log_as='zip' creates a zip archive."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
     (tmp_path / "debug" / "b.pt").write_text("tensor2")
 
     outputs = [Output("$output/debug/*.pt", log_as="zip")]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    log_extra_outputs([json_backend], outputs, tmp_path)
+    items = collect_extra_outputs(outputs, tmp_path)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -155,8 +158,13 @@ def test_log_extra_outputs_glob_zip(tmp_path):
     with zipfile.ZipFile(zip_path) as zf:
         assert sorted(zf.namelist()) == ["a.pt", "b.pt"]
 
+    # Item points to the zip
+    assert len(items) == 1
+    assert items[0].path == zip_path
+    assert items[0].log_as == "artifact"
 
-def test_log_extra_outputs_dir_zip(tmp_path):
+
+def test_collect_extra_outputs_dir_zip(tmp_path):
     """Directory with log_as='zip' zips entire directory."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
@@ -164,14 +172,7 @@ def test_log_extra_outputs_dir_zip(tmp_path):
     (tmp_path / "debug" / "sub" / "b.pt").write_text("tensor2")
 
     outputs = [Output("$output/debug", log_as="zip")]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    log_extra_outputs([json_backend], outputs, tmp_path)
+    items = collect_extra_outputs(outputs, tmp_path)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -180,39 +181,29 @@ def test_log_extra_outputs_dir_zip(tmp_path):
         assert "a.pt" in names
         assert "sub/b.pt" in names
 
+    assert len(items) == 1
+    assert items[0].path == zip_path
 
-def test_log_extra_outputs_glob_no_match(tmp_path, capsys):
+
+def test_collect_extra_outputs_glob_no_match(tmp_path, capsys):
     """Glob with no matches prints a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    log_extra_outputs([json_backend], outputs, tmp_path)
+    items = collect_extra_outputs(outputs, tmp_path)
+    assert items == []
     assert "matched no files" in capsys.readouterr().out
 
 
-def test_log_extra_outputs_single_file(tmp_path):
+def test_collect_extra_outputs_single_file(tmp_path):
     """Non-glob single file still works (regression)."""
     (tmp_path / "meta.json").write_text("{}")
 
     outputs = [Output("$output/meta.json", log_as="artifact")]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    log_extra_outputs([json_backend], outputs, tmp_path)
-    logged = [f for f in json_backend.files_logged if f.get("log_as") == "artifact"]
-    assert len(logged) == 1
+    items = collect_extra_outputs(outputs, tmp_path)
+    artifact_items = [i for i in items if i.log_as == "artifact"]
+    assert len(artifact_items) == 1
 
 
-def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
+def test_collect_extra_outputs_duplicate_zip_raises(tmp_path):
     """Two zip outputs with same implicit label should raise."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("x")
@@ -222,14 +213,29 @@ def test_log_extra_outputs_duplicate_zip_raises(tmp_path):
         Output("$output/debug/*.pt", log_as="zip"),
         Output("$output/debug/*.png", log_as="zip"),
     ]
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        log_extra_outputs([json_backend], outputs, tmp_path)
+        collect_extra_outputs(outputs, tmp_path)
 
 
+# ---------------------------------------------------------------------------
+# collect_run_logs
+# ---------------------------------------------------------------------------
+
+
+def test_collect_run_logs(tmp_path):
+    """Collects existing log files from output dir."""
+    (tmp_path / "run.log").write_text("combined")
+    (tmp_path / "stdout.log").write_text("out")
+    # stderr.log missing — should be skipped
+
+    items = collect_run_logs(tmp_path)
+    assert len(items) == 2
+    keys = {i.key for i in items}
+    assert keys == {"run.log", "stdout.log"}
+    assert all(i.log_as == "text" for i in items)
+
+
+def test_collect_run_logs_empty(tmp_path):
+    """No log files → empty list."""
+    items = collect_run_logs(tmp_path)
+    assert items == []

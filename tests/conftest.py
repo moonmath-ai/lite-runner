@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 _FAKE_GIT_INFO = {
     "repo": "test-repo",
     "commit": "abc",

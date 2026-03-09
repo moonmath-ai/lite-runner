@@ -6,12 +6,10 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from genai_runner import UNSET, Metric, Output, Param, Runner
-from genai_runner.runner import RunFlags, _collect_git_info, _interpolate_output
-
 from conftest import _FAKE_GIT_INFO, _make_runner, _mock_wb_run
 
+from genai_runner import UNSET, Metric, Param, Runner
+from genai_runner.runner import _collect_git_info, _interpolate_output
 
 # ---------------------------------------------------------------------------
 # CLI parsing (via parse_cli)
@@ -240,7 +238,8 @@ def test_override_run_skips_prompting(tmp_path):
     )
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.override(prompt="a cat").run(
@@ -737,7 +736,8 @@ def test_full_run_with_mocked_wandb(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -766,7 +766,8 @@ def test_run_project_kwarg_flows_to_backend(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True, project="custom-proj")
@@ -789,7 +790,8 @@ def test_full_run_explicit_group(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -871,7 +873,8 @@ def test_full_run_no_wandb(tmp_path):
 
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_wandb=True, no_interactive=True)
@@ -928,7 +931,8 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     with (
         patch("genai_runner.backends.wandb", mock_wb),
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
     ):
         runner.run(no_interactive=True)
@@ -958,7 +962,8 @@ def test_no_wandb_failed_run(tmp_path):
 
     with (
         patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.log_code_snapshot"),
+        patch("genai_runner.backends.create_repo_archive", return_value=None),
+        patch("genai_runner.backends.create_repo_diff", return_value=None),
         patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
         pytest.raises(SystemExit, match="1"),
     ):

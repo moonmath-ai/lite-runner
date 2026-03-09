@@ -24,12 +24,16 @@ from .backends import (
     DryRunBackend,
     JsonBackend,
     LogBackend,
+    LogSummary,
+    LogTags,
     WandbBackend,
-    extract_metrics,
-    log_code_snapshot,
-    log_extra_outputs,
-    log_files,
-    log_run_logs,
+    collect_code_archive,
+    collect_code_diff,
+    collect_extra_outputs,
+    collect_metrics,
+    collect_param_files,
+    collect_run_logs,
+    dispatch_log_items,
 )
 from .params import (
     UNSET,
@@ -452,16 +456,23 @@ class Runner:
         print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
 
         # Save code snapshot (git archive + dirty diff)
-        try:
-            log_code_snapshot(backend_list, output_dir, git_info)
-        except Exception as e:  # noqa: BLE001
-            print(f"[genai_runner] Warning: code snapshot failed: {e}")
+        code_items = []
+        for name, collector in [
+            ("code archive", lambda: collect_code_archive(output_dir, git_info)),
+            ("code diff", lambda: collect_code_diff(output_dir, git_info)),
+        ]:
+            try:
+                code_items.extend(collector())
+            except Exception as e:  # noqa: BLE001
+                print(f"[genai_runner] Warning: {name} failed: {e}")
+        dispatch_log_items(backend_list, code_items)
 
         # Interpolate $output in param values
         interpolated_params = _interpolate_output(r.param_values, output_dir)
 
         # Log input files (log_when == "before")
-        log_files(backend_list, r.params, interpolated_params, when="before")
+        before_items = collect_param_files(r.params, interpolated_params, when="before")
+        dispatch_log_items(backend_list, before_items)
 
         # Build command
         cmd = r.build_command(interpolated_params)
@@ -510,7 +521,9 @@ class Runner:
     ) -> None:
         """Run post-execution steps (metrics, file uploads, code snapshot).
 
-        Each step is individually try-excepted so backends always finish.
+        Collectors are individually try-excepted so one failure doesn't
+        skip others.  Dispatch sends all collected items to every backend,
+        catching per-backend errors independently.
         """
         if aborted:
             status = "aborted"
@@ -524,42 +537,41 @@ class Runner:
             "status": status,
         }
 
-        steps: list[tuple[str, object]] = [
+        collectors: list[tuple[str, object]] = [
             (
                 "extract metrics",
-                lambda: extract_metrics(backends, self.metrics, stdout_text),
+                lambda: collect_metrics(self.metrics, stdout_text),
             ),
             (
-                "log output files",
-                lambda: log_files(backends, self.params, param_values, when="after"),
+                "collect output files",
+                lambda: collect_param_files(self.params, param_values, when="after"),
             ),
             (
-                "log extra outputs",
-                lambda: log_extra_outputs(backends, self.outputs, output_dir),
+                "collect extra outputs",
+                lambda: collect_extra_outputs(self.outputs, output_dir),
             ),
             (
-                "log run logs",
-                lambda: log_run_logs(backends, output_dir),
+                "collect run logs",
+                lambda: collect_run_logs(output_dir),
             ),
             (
                 "tag run status",
-                lambda: (
-                    [b.set_tags([*run_tags, status]) for b in backends]
-                    if status != "success"
-                    else None
-                ),
+                lambda: [LogTags([*run_tags, status])] if status != "success" else [],
             ),
             (
                 "update summary",
-                lambda: [b.set_summary(summary) for b in backends],
+                lambda: [LogSummary(summary)],
             ),
         ]
 
-        for step_name, step in steps:
+        all_items = []
+        for step_name, collector in collectors:
             try:
-                step()
+                all_items.extend(collector())
             except Exception as e:  # noqa: BLE001
                 print(f"[genai_runner] Warning: {step_name} failed: {e}")
+
+        dispatch_log_items(backends, all_items)
 
         # Finish each backend individually so one failure doesn't block others
         for b in backends:

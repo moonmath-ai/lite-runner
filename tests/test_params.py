@@ -3,12 +3,10 @@
 from unittest.mock import patch
 
 import pytest
+from conftest import _make_runner
 
 from genai_runner import UNSET, Param
 from genai_runner.params import _log_as_from_type
-
-from conftest import _make_runner
-
 
 # ---------------------------------------------------------------------------
 # _log_as_from_type
