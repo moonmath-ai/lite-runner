@@ -53,9 +53,7 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _ensure_logging() -> None:
     """Set up a default handler if none configured (besides NullHandler)."""
-    if not any(
-        h for h in logger.handlers if not isinstance(h, logging.NullHandler)
-    ):
+    if not any(h for h in logger.handlers if not isinstance(h, logging.NullHandler)):
         handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(
             logging.Formatter("\033[36mgenai-runner:\033[0m %(message)s")
