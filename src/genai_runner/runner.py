@@ -346,7 +346,7 @@ class Runner:
                 f" Minimal free space: {needed_gib:.2f} GiB."
                 f" Available free space: {free / gib:.2f} GiB",
             )
-            sys.exit(1)  # TODO: all sys.exit should occur at run()
+            sys.exit(1)
 
     def run(
         self,
@@ -424,8 +424,6 @@ class Runner:
                 config=config,
             )
             run_name = run_name or backends[backend_class].run_name
-            # TODO: dry run backend should default to "dry_run"
-            # TODO: json backend should default to "local"
         backend_list = list(backends.values())
 
         # Output dir
@@ -492,7 +490,7 @@ class Runner:
         # Execute
         print("=" * 60)
         if not flags.dry_run:
-            exit_code, duration, stdout_text, aborted = r._execute(cmd, output_dir)
+            exit_code, duration, stdout_text, aborted = r.execute(cmd, output_dir)
         else:
             exit_code = 0
             duration = 100
@@ -501,7 +499,7 @@ class Runner:
         print("=" * 60)
 
         # Post-run: never raise, always try to finish backends
-        r._post_run(
+        r.post_run(
             backend_list,
             interpolated_params,
             output_dir,
@@ -515,7 +513,7 @@ class Runner:
             print("Aborting run due to aborted or failed exit code")
             sys.exit(1)
 
-    def _post_run(
+    def post_run(
         self,
         backends: list[LogBackend],
         param_values: dict,
@@ -650,7 +648,7 @@ class Runner:
     # Subprocess execution
     # -----------------------------------------------------------------------
 
-    def _execute(
+    def execute(
         self, cmd: list[str], output_dir: Path
     ) -> tuple[int, float, str, bool]:
         """Run subprocess, stream stdout/stderr to terminal and log files.

@@ -339,9 +339,11 @@ def prepare_extra_outputs(
             zip_path = create_zip(matches, base, output_dir, label)
             items.append(LogFile(zip_path, "artifact", key=label))
         else:
-            for m in matches:
-                if m.is_file():
-                    items.append(LogFile(m, o.log_as, key=label))
+            items.extend(
+                LogFile(m, o.log_as, key=label)
+                for m in matches
+                if m.is_file()
+            )
 
     return items
 
