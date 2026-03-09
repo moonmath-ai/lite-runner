@@ -5,15 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from genai_runner import UNSET, JsonBackend, Metric, Output, Param
+from genai_runner import UNSET, Metric, Output, Param
 from genai_runner.backends import (
-    LogFile,
-    LogMetric,
     _split_glob,
     collect_metrics,
     collect_param_files,
     collect_run_logs,
-    dispatch_log_items,
     prepare_extra_outputs,
 )
 
@@ -48,19 +45,19 @@ def test_split_glob_question():
 def test_metric_float():
     metrics = [Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
     items = collect_metrics(metrics, "some output\nskipped=32.8%\ndone")
-    assert items == [LogMetric("skip_pct", 32.8)]
+    assert items == [("skip_pct", 32.8)]
 
 
 def test_metric_str():
     metrics = [Metric("status", pattern=r"final: (\w+)", type="str")]
     items = collect_metrics(metrics, "final: completed")
-    assert items == [LogMetric("status", "completed")]
+    assert items == [("status", "completed")]
 
 
 def test_metric_last_match_wins():
     metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     items = collect_metrics(metrics, "x=1.0\nx=2.0\nx=3.0")
-    assert items == [LogMetric("val", 3.0)]
+    assert items == [("val", 3.0)]
 
 
 def test_metric_no_match():
@@ -76,41 +73,7 @@ def test_collect_metrics_multiple():
         Metric("status", pattern=r"final: (\w+)", type="str"),
     ]
     items = collect_metrics(metrics, "x=3.14\nfinal: done")
-    assert len(items) == 2
-    assert items[0] == LogMetric("val", 3.14)
-    assert items[1] == LogMetric("status", "done")
-
-
-# ---------------------------------------------------------------------------
-# dispatch_log_items
-# ---------------------------------------------------------------------------
-
-
-def test_dispatch_metrics_to_json_backend():
-    """LogMetric items are dispatched to backends correctly."""
-    json_backend = JsonBackend(
-        project="test", name=None, group=None, tags=[], config={}
-    )
-    items = [LogMetric("val", 3.14)]
-    dispatch_log_items([json_backend], items)
-    assert json_backend.metrics["val"] == 3.14
-
-
-def test_dispatch_files_to_json_backend(tmp_path):
-    """LogFile items are dispatched to backends correctly."""
-    f = tmp_path / "test.txt"
-    f.write_text("hello")
-    json_backend = JsonBackend(
-        project="test",
-        name=None,
-        group=None,
-        tags=[],
-        config={"meta/output_dir": str(tmp_path)},
-    )
-    items = [LogFile(f, "text", "test")]
-    dispatch_log_items([json_backend], items)
-    assert len(json_backend.files_logged) == 1
-    assert json_backend.files_logged[0]["key"] == "test"
+    assert items == [("val", 3.14), ("status", "done")]
 
 
 # ---------------------------------------------------------------------------

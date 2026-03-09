@@ -30,25 +30,6 @@ class LogFile:
     key: str
 
 
-@dataclass(frozen=True)
-class LogMetric:
-    name: str
-    value: object
-
-
-@dataclass(frozen=True)
-class LogSummary:
-    summary: dict
-
-
-@dataclass(frozen=True)
-class LogTags:
-    tags: list[str]
-
-
-LogItem = LogFile | LogMetric | LogSummary | LogTags
-
-
 # ---------------------------------------------------------------------------
 # Backend protocol and implementations
 # ---------------------------------------------------------------------------
@@ -72,8 +53,6 @@ class LogBackend(Protocol):
     def update_config(self, updates: dict) -> None: ...
 
     def log_file(self, path: Path, log_as: str, key: str) -> None: ...
-
-    def log_item(self, item: LogItem) -> None: ...
 
     def set_metric(self, name: str, value: object) -> None: ...
 
@@ -129,9 +108,6 @@ class WandbBackend:
         else:
             raise ValueError(f"Invalid log_as: {log_as}")
 
-    def log_item(self, item: LogItem) -> None:
-        _dispatch_item(self, item)
-
     def set_metric(self, name: str, value: object) -> None:
         self.run.summary[name] = value
 
@@ -176,9 +152,6 @@ class JsonBackend:
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         self.files_logged.append({"path": str(path), "log_as": log_as, "key": key})
-
-    def log_item(self, item: LogItem) -> None:
-        _dispatch_item(self, item)
 
     def set_metric(self, name: str, value: object) -> None:
         self.metrics[name] = value
@@ -228,9 +201,6 @@ class DryRunBackend:
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         print(f"[dry-run] Logging file: {path} as {log_as} as {key}")
 
-    def log_item(self, item: LogItem) -> None:
-        _dispatch_item(self, item)
-
     def set_metric(self, name: str, value: object) -> None:
         print(f"[dry-run] Setting metric: {name} to {value}")
 
@@ -245,49 +215,20 @@ class DryRunBackend:
 
 
 # ---------------------------------------------------------------------------
-# Dispatch: send collected items to backends
-# ---------------------------------------------------------------------------
-
-
-def _dispatch_item(backend: LogBackend, item: LogItem) -> None:
-    """Route a LogItem to the appropriate backend method."""
-    if isinstance(item, LogFile):
-        backend.log_file(item.path, item.log_as, item.key)
-    elif isinstance(item, LogMetric):
-        backend.set_metric(item.name, item.value)
-    elif isinstance(item, LogSummary):
-        backend.set_summary(item.summary)
-    elif isinstance(item, LogTags):
-        backend.set_tags(item.tags)
-
-
-def dispatch_log_items(
-    backends: list[LogBackend], items: list[LogItem]
-) -> None:
-    """Send each log item to every backend, catching per-item errors."""
-    for b in backends:
-        for item in items:
-            try:
-                b.log_item(item)
-            except Exception as e:  # noqa: BLE001
-                print(
-                    f"[genai_runner] Warning:"
-                    f" {type(b).__name__} failed on {item}: {e}"
-                )
-
-
-# ---------------------------------------------------------------------------
-# Collectors: return lists of LogItem without touching backends
+# Collectors (collect_*: non-mutating) and preparers (prepare_*: create files)
 # ---------------------------------------------------------------------------
 
 
 def collect_metrics(
     metrics: list[Metric],
     stdout_text: str,
-) -> list[LogMetric]:
-    """Extract metrics from stdout via regex."""
+) -> list[tuple[str, object]]:
+    """Extract metrics from stdout via regex.
+
+    Returns list of (name, value) pairs.
+    """
     casters = {"float": float, "int": int}
-    items: list[LogMetric] = []
+    items: list[tuple[str, object]] = []
     for m in metrics:
         matches = re.findall(m.pattern, stdout_text)
         if not matches:
@@ -301,7 +242,7 @@ def collect_metrics(
                 val = raw
         else:
             val = raw
-        items.append(LogMetric(m.name, val))
+        items.append((m.name, val))
     return items
 
 
