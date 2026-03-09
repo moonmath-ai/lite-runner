@@ -516,6 +516,7 @@ class Runner:
         logger.info("Command:\n%s", shlex.join(cmd))
 
         # Execute
+        logger.info("Run started")
         if not flags.dry_run:
             exit_code, duration, stdout_text, aborted = r.execute(cmd, output_dir)
         else:
@@ -523,6 +524,8 @@ class Runner:
             duration = 100
             stdout_text = "This is a dry run"
             aborted = False
+
+        logger.info("Run finished")
 
         # Post-run: never raise, always try to finish backends
         r.post_run(
