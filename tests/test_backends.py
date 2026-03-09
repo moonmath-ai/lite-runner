@@ -148,12 +148,13 @@ def test_prepare_extra_outputs_dir_zip(tmp_path):
     assert items[0].path == zip_path
 
 
-def test_prepare_extra_outputs_glob_no_match(tmp_path, capsys):
-    """Glob with no matches prints a warning."""
+def test_prepare_extra_outputs_glob_no_match(tmp_path, caplog):
+    """Glob with no matches logs a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
-    items = prepare_extra_outputs(outputs, tmp_path)
+    with caplog.at_level("WARNING", logger="genai_runner"):
+        items = prepare_extra_outputs(outputs, tmp_path)
     assert items == []
-    assert "matched no files" in capsys.readouterr().out
+    assert "matched no files" in caplog.text
 
 
 def test_prepare_extra_outputs_single_file(tmp_path):

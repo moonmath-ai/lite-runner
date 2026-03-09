@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import re
 import shutil
 import tarfile
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from .params import Metric, Output, Param
 
 VideoFormat = Literal["gif", "mp4", "webm", "ogg"]
+
+logger = logging.getLogger("genai_runner")
 
 
 # ---------------------------------------------------------------------------
@@ -205,29 +208,29 @@ class DryRunBackend:
         config: dict[str, object],
     ) -> None:
         self.run_name = name or "dry_run"
-        print(f"[dry-run] Project: {project}")
-        print(f"[dry-run] Name: {self.run_name}")
-        print(f"[dry-run] Group: {group}")
-        print(f"[dry-run] Tags: {tags}")
-        print(f"[dry-run] Config: {config}")
+        logger.info("[dry-run] Project: %s", project)
+        logger.info("[dry-run] Name: %s", self.run_name)
+        logger.info("[dry-run] Group: %s", group)
+        logger.info("[dry-run] Tags: %s", tags)
+        logger.info("[dry-run] Config: %s", config)
 
     def update_config(self, updates: dict[str, object]) -> None:
-        print(f"[dry-run] Updating config: {updates}")
+        logger.info("[dry-run] Updating config: %s", updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
-        print(f"[dry-run] Logging file: {path} as {log_as} as {key}")
+        logger.info("[dry-run] Logging file: %s as %s as %s", path, log_as, key)
 
     def set_metric(self, name: str, value: object) -> None:
-        print(f"[dry-run] Setting metric: {name} to {value}")
+        logger.info("[dry-run] Setting metric: %s to %s", name, value)
 
     def set_summary(self, summary: dict[str, object]) -> None:
-        print(f"[dry-run] Setting summary: {summary}")
+        logger.info("[dry-run] Setting summary: %s", summary)
 
     def set_tags(self, tags: list[str]) -> None:
-        print(f"[dry-run] Setting tags: {tags}")
+        logger.info("[dry-run] Setting tags: %s", tags)
 
     def finish(self, exit_code: int) -> None:
-        print(f"[dry-run] Finishing with exit code: {exit_code}")
+        logger.info("[dry-run] Finishing with exit code: %s", exit_code)
 
 
 # ---------------------------------------------------------------------------
@@ -308,10 +311,10 @@ def prepare_extra_outputs(
             matches = sorted(base.glob(pattern))
         elif path.is_dir():
             if o.log_as != "zip":
-                print(
-                    f"[genai_runner] Warning: {raw_path} is a directory,"
-                    " uploading each file individually"
-                    " (use log_as='zip' to zip instead)"
+                logger.warning(
+                    "%s is a directory, uploading each file individually"
+                    " (use log_as='zip' to zip instead)",
+                    raw_path,
                 )
             base = path
             matches = sorted(path.rglob("*"))
@@ -332,7 +335,7 @@ def prepare_extra_outputs(
 
         # Glob or directory
         if not matches:
-            print(f"[genai_runner] Warning: glob '{o.path}' matched no files, skipping")
+            logger.warning("glob '%s' matched no files, skipping", o.path)
             continue
 
         label = o.name or base.name or "output"

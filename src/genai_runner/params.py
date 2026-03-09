@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 import questionary
+
+logger = logging.getLogger("genai_runner")
 
 ParamType = Literal[
     "str",
@@ -51,7 +54,7 @@ def _ask_or_exit(widget: questionary.Question) -> str:
     """Ask a questionary widget, exit on cancel (None)."""
     answer = widget.ask()
     if answer is None:
-        print("Cancelled.", file=sys.stderr)
+        logger.error("Cancelled.")
         sys.exit(1)
     return answer
 
@@ -60,7 +63,7 @@ def _confirm_or_exit(widget: questionary.Question) -> bool:
     """Ask a confirm widget, exit on cancel (None)."""
     answer = widget.ask()
     if answer is None:
-        print("Cancelled.", file=sys.stderr)
+        logger.error("Cancelled.")
         sys.exit(1)
     return answer
 
@@ -136,11 +139,11 @@ class Param:
             msg = f"Param('{self.name}', prompt=False) requires a default"
             raise ValueError(msg)
         if self.type == "bool" and self.default not in (None, False):
-            print(
-                f"[genai_runner] Warning: Param('{self.name}', type='bool')"
-                f" has default={self.default!r} which is ignored"
+            logger.warning(
+                "Param('%s', type='bool') has default=%r which is ignored"
                 " (bool params always default to False)",
-                file=sys.stderr,
+                self.name,
+                self.default,
             )
         if self.log_when is None and any(_log_as_from_type(t) for t in self.type_list):
             self.log_when = "after" if self._value_contains_output() else "before"

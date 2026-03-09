@@ -624,15 +624,14 @@ def test_run_kwargs_override_defaults():
         runner.run(dry_run=True, no_interactive=True)
 
 
-def test_run_kwargs_warn_on_contradiction(capsys):
+def test_run_kwargs_warn_on_contradiction(caplog):
     """run() warns when kwargs contradict explicit CLI flags."""
     runner = _make_runner()
     r = runner.parse_cli(["--no-interactive"])
-    flags = r.run_flags.merge(no_interactive=False)
+    with caplog.at_level("WARNING", logger="genai_runner"):
+        flags = r.run_flags.merge(no_interactive=False)
     assert flags.no_interactive is False  # kwarg wins
-    captured = capsys.readouterr()
-    assert "Warning" in captured.err
-    assert "no_interactive" in captured.err
+    assert "no_interactive" in caplog.text
 
 
 def test_run_kwargs_no_warn_on_default():
@@ -665,7 +664,7 @@ def test_check_disk_space_exits_when_not_enough():
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_prints_command_no_wandb(capsys):
+def test_dry_run_prints_command_no_wandb(caplog):
     runner = Runner(
         command="python gen.py",
         params=[
@@ -676,10 +675,12 @@ def test_dry_run_prints_command_no_wandb(capsys):
         tags=["v1"],
     )
     r = runner.parse_cli(["--prompt", "test"])
-    with patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
+    with (
+        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        caplog.at_level("INFO", logger="genai_runner"),
+    ):
         r.run(dry_run=True, no_interactive=True)
-    captured = capsys.readouterr()
-    out = re.sub(r"\033\[[0-9;]*m", "", captured.out)
+    out = re.sub(r"\033\[[0-9;]*m", "", caplog.text)
     assert "[dry-run]" in out
     assert "--prompt test" in out
     assert "--seed 42" in out

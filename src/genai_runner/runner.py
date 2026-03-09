@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime
+import logging
 import os
 import shlex
 import shutil
@@ -44,10 +45,23 @@ from .params import (
 )
 
 RUNS_DIR = Path.home() / "genai_runs"
-LOGGING_PREFIX = "\033[36mgenai-runner:\033[0m"
 
+logger = logging.getLogger("genai_runner")
 
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _ensure_logging() -> None:
+    """Set up a default handler if none configured (besides NullHandler)."""
+    if not any(
+        h for h in logger.handlers if not isinstance(h, logging.NullHandler)
+    ):
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(
+            logging.Formatter("\033[36mgenai-runner:\033[0m %(message)s")
+        )
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
 
 @dataclass(frozen=True)
@@ -77,10 +91,11 @@ class RunFlags:
                 continue
             existing = getattr(self, field_name)
             if existing is not None and existing != value:
-                print(
-                    f"[genai_runner] Warning: run({field_name}={value!r})"
-                    f" overrides CLI flag (was {existing!r})",
-                    file=sys.stderr,
+                logger.warning(
+                    "run(%s=%r) overrides CLI flag (was %r)",
+                    field_name,
+                    value,
+                    existing,
                 )
             updates[field_name] = value
         return replace(self, **updates) if updates else self  # type: ignore[arg-type]
@@ -318,14 +333,10 @@ class Runner:
         if no_interactive:
             if missing:
                 names = [p.name for p in missing]
-                print(
-                    f"Error: missing required params: {', '.join(names)}",
-                    file=sys.stderr,
-                )
-                print(
+                logger.error("Missing required params: %s", ", ".join(names))
+                logger.error(
                     "Run without --no-interactive for interactive mode,"
-                    " or pass them on the command line.",
-                    file=sys.stderr,
+                    " or pass them on the command line."
                 )
                 sys.exit(2)
             new.filled = True
@@ -349,10 +360,12 @@ class Runner:
             check_path = check_path.parent
         free = shutil.disk_usage(check_path).free
         if free < needed:
-            print(
-                f"{LOGGING_PREFIX} Error: Not enough free space on device."
-                f" Minimal free space: {needed_gib:.2f} GiB."
-                f" Available free space: {free / gib:.2f} GiB",
+            logger.error(
+                "Not enough free space on device."
+                " Minimal free space: %.2f GiB."
+                " Available free space: %.2f GiB",
+                needed_gib,
+                free / gib,
             )
             sys.exit(1)
 
@@ -373,6 +386,7 @@ class Runner:
 
         Keyword args override CLI flags (with warnings on contradiction).
         """
+        _ensure_logging()
         r = self
         if not r.cli_parsed:
             r = r.parse_cli()
@@ -460,7 +474,7 @@ class Runner:
         # Create output dir
         if not flags.dry_run:
             output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
+        logger.info("Output dir: %s", output_dir)
 
         # Save code snapshot (git archive + dirty diff)
         pre_run_files = []
@@ -471,7 +485,7 @@ class Runner:
             try:
                 pre_run_files.extend(fn(output_dir))
             except Exception as e:  # noqa: BLE001
-                print(f"[genai_runner] Warning: {name} failed: {e}")
+                logger.warning("%s failed: %s", name, e)
 
         # Interpolate $output in param values
         interpolated_params = _interpolate_output(r.param_values, output_dir)
@@ -487,20 +501,17 @@ class Runner:
                 for f in pre_run_files:
                     b.log_file(f.path, f.log_as, f.key)
             except Exception as e:  # noqa: BLE001
-                print(
-                    f"[genai_runner] Warning:"
-                    f" {type(b).__name__} pre-run logging failed: {e}"
-                )
+                logger.warning("%s pre-run logging failed: %s", type(b).__name__, e)
 
         # Build command
         cmd = r.build_command(interpolated_params)
         for b in backend_list:
             b.update_config({"meta/full_command": shlex.join(cmd)})
         colored = r.build_command(interpolated_params, r.param_sources)
-        print(f"{LOGGING_PREFIX} Command:\n{' '.join(colored)}")
+        logger.info("Command:\n%s", " ".join(colored))
 
         # Execute
-        print("=" * 60)
+        logger.info("=" * 60)
         if not flags.dry_run:
             exit_code, duration, stdout_text, aborted = r.execute(cmd, output_dir)
         else:
@@ -508,7 +519,7 @@ class Runner:
             duration = 100
             stdout_text = "This is a dry run"
             aborted = False
-        print("=" * 60)
+        logger.info("=" * 60)
 
         # Post-run: never raise, always try to finish backends
         r.post_run(
@@ -522,7 +533,7 @@ class Runner:
             aborted=aborted,
         )
         if aborted or exit_code:
-            print("Aborting run due to aborted or failed exit code")
+            logger.error("Aborting run due to aborted or failed exit code")
             sys.exit(1)
 
     def post_run(
@@ -560,7 +571,7 @@ class Runner:
         try:
             metrics = collect_metrics(self.metrics, stdout_text)
         except Exception as e:  # noqa: BLE001
-            print(f"[genai_runner] Warning: extract metrics failed: {e}")
+            logger.warning("extract metrics failed: %s", e)
 
         # Collect/prepare files
         files = []
@@ -582,7 +593,7 @@ class Runner:
             try:
                 files.extend(collector())
             except Exception as e:  # noqa: BLE001
-                print(f"[genai_runner] Warning: {step_name} failed: {e}")
+                logger.warning("%s failed: %s", step_name, e)
 
         # Send to each backend
         for b in backends:
@@ -595,18 +606,18 @@ class Runner:
                 if status != "success":
                     b.set_tags([*run_tags, status])
             except Exception as e:  # noqa: BLE001
-                print(f"[genai_runner] Warning: {type(b).__name__} logging failed: {e}")
+                logger.warning("%s logging failed: %s", type(b).__name__, e)
 
         # Finish each backend individually
         for b in backends:
             try:
                 b.finish(exit_code)
             except Exception as e:  # noqa: BLE001
-                print(f"[genai_runner] Warning: finish {type(b).__name__} failed: {e}")
+                logger.warning("finish %s failed: %s", type(b).__name__, e)
 
-        print(f"{LOGGING_PREFIX} Status: {status} (exit code {exit_code})")
-        print(f"{LOGGING_PREFIX} Duration: {duration:.1f}s")
-        print(f"{LOGGING_PREFIX} Output dir: {output_dir}")
+        logger.info("Status: %s (exit code %s)", status, exit_code)
+        logger.info("Duration: %.1fs", duration)
+        logger.info("Output dir: %s", output_dir)
 
     # -----------------------------------------------------------------------
     # Build command
@@ -731,7 +742,7 @@ class Runner:
                 proc.wait()
             except KeyboardInterrupt:
                 aborted = True
-                print("\n[genai_runner] Ctrl-C received, terminating subprocess...")
+                logger.warning("Ctrl-C received, terminating subprocess...")
                 proc.send_signal(signal.SIGTERM)
                 try:
                     proc.wait(timeout=10)
