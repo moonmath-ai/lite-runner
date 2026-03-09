@@ -330,14 +330,13 @@ class Runner:
 
         if no_interactive:
             if missing:
-                names = [p.name for p in missing]
-                logger.error(
-                    "Missing required params: %s. "
-                    "Run without --no-interactive for interactive mode, "
-                    "or pass them on the command line.",
-                    ", ".join(names),
+                names = ", ".join(p.name for p in missing)
+                msg = (
+                    f"Missing required params: {names}."
+                    " Run without --no-interactive for interactive mode,"
+                    " or pass them on the command line."
                 )
-                sys.exit(2)
+                raise ValueError(msg)
             new.filled = True
             return new
 
@@ -351,7 +350,7 @@ class Runner:
         return new
 
     def check_disk_space(self, needed_gib: float) -> None:
-        """Exit if the runs directory has less than *needed_gib* free."""
+        """Raise OSError if the runs directory has less than *needed_gib* free."""
         gib = 1024 * 1024 * 1024
         needed = needed_gib * gib
         check_path = RUNS_DIR
@@ -359,14 +358,12 @@ class Runner:
             check_path = check_path.parent
         free = shutil.disk_usage(check_path).free
         if free < needed:
-            logger.error(
-                "Not enough free space on device."
-                " Minimal free space: %.2f GiB."
-                " Available free space: %.2f GiB",
-                needed_gib,
-                free / gib,
+            msg = (
+                f"Not enough free space on device."
+                f" Minimal free space: {needed_gib:.2f} GiB."
+                f" Available free space: {free / gib:.2f} GiB"
             )
-            sys.exit(1)
+            raise OSError(msg)
 
     def run(
         self,
@@ -399,13 +396,19 @@ class Runner:
             run_name=run_name,
         )
 
-        if flags.min_free_space_gib is not None:
-            self.check_disk_space(flags.min_free_space_gib)
+        try:
+            if flags.min_free_space_gib is not None:
+                self.check_disk_space(flags.min_free_space_gib)
 
-        if not r.defaults_resolved:
-            r = r.resolve_defaults()
-        if not r.filled:
-            r = r.ask_user(no_interactive=flags.no_interactive)
+            if not r.defaults_resolved:
+                r = r.resolve_defaults()
+            if not r.filled:
+                r = r.ask_user(no_interactive=flags.no_interactive)
+        except KeyboardInterrupt:
+            sys.exit(1)
+        except (ValueError, OSError) as e:
+            logger.error("%s", e)
+            sys.exit(2)
 
         # Git info and project
         git_info = _collect_git_info()

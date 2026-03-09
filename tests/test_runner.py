@@ -285,9 +285,9 @@ def test_ask_user_fills_from_questionary():
     assert r.filled
 
 
-def test_ask_user_non_interactive_exits_on_missing():
+def test_ask_user_non_interactive_raises_on_missing():
     runner = _make_runner(params=[Param("prompt")])
-    with pytest.raises(SystemExit, match="2"):
+    with pytest.raises(ValueError, match="Missing required params"):
         runner.ask_user(no_interactive=True)
 
 
@@ -654,9 +654,9 @@ def test_check_disk_space_passes_when_enough():
     runner.check_disk_space(0.001)
 
 
-def test_check_disk_space_exits_when_not_enough():
+def test_check_disk_space_raises_when_not_enough():
     runner = Runner(command="echo", params=[])
-    with pytest.raises(SystemExit):
+    with pytest.raises(OSError, match="Not enough free space"):
         runner.check_disk_space(999_999)
 
 
