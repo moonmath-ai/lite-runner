@@ -52,6 +52,8 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
 class RunFlags:
+    """CLI flags that control runner behavior (not model params)."""
+
     dry_run: bool | None = None
     min_free_space_gib: float | None = None
     no_interactive: bool | None = None
@@ -143,6 +145,7 @@ class Runner:
     # -------------------------------------------------------------------
 
     def get_parser(self) -> argparse.ArgumentParser:
+        """Build argparse parser with built-in flags and param flags."""
         parser = argparse.ArgumentParser(
             description="genai_runner experiment launcher",
             formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -191,6 +194,7 @@ class Runner:
         return parser
 
     def copy(self) -> Self:
+        """Return a deep copy of this runner."""
         return copy.deepcopy(self)
 
     def with_metadata(

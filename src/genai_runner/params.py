@@ -159,10 +159,12 @@ class Param:
 
     @property
     def dest(self) -> str:
+        """Argparse destination (name with hyphens replaced by underscores)."""
         return self._dest
 
     @property
     def nargs(self) -> int | None:
+        """Number of values for multi-value params, None for single-value."""
         return len(self.type) if isinstance(self.type, list) else None
 
     @property

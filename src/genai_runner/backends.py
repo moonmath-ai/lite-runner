@@ -31,6 +31,8 @@ VideoFormat = Literal["gif", "mp4", "webm", "ogg"]
 
 @dataclass(frozen=True)
 class LogFile:
+    """A file to log to backends (path + upload type + key)."""
+
     path: Path
     log_as: str
     key: str
