@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -48,24 +47,6 @@ def _log_as_from_type(t: str) -> str | None:
 
 # Sentinel for params the user explicitly skipped (typed '-' at the prompt).
 _SKIP_INPUT = "-"
-
-
-def _ask_or_exit(widget: questionary.Question) -> str:
-    """Ask a questionary widget, exit on cancel (None)."""
-    answer = widget.ask()
-    if answer is None:
-        logger.error("Cancelled.")
-        sys.exit(1)
-    return answer
-
-
-def _confirm_or_exit(widget: questionary.Question) -> bool:
-    """Ask a confirm widget, exit on cancel (None)."""
-    answer = widget.ask()
-    if answer is None:
-        logger.error("Cancelled.")
-        sys.exit(1)
-    return answer
 
 
 class _Unset:
@@ -222,7 +203,10 @@ class Param:
 
     def _prompt_bool(self, default: object = None) -> bool:
         label = self.help or self.name
-        return _confirm_or_exit(questionary.confirm(f"{label}:", default=bool(default)))
+        answer = questionary.confirm(f"{label}:", default=bool(default)).ask()
+        if answer is None:
+            raise KeyboardInterrupt
+        return answer
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name
@@ -230,13 +214,16 @@ class Param:
         if self.choices:
             choices = [_SKIP_INPUT, *self.choices]
             default_choice = str(default) if default is not None else None
-            answer = _ask_or_exit(
-                questionary.select(f"{label}:", choices=choices, default=default_choice)
-            )
+            answer = questionary.select(
+                f"{label}:", choices=choices, default=default_choice
+            ).ask()
         elif isinstance(self.type, str) and self.type.startswith("path"):
-            answer = _ask_or_exit(questionary.path(f"{label}:", default=default_str))
+            answer = questionary.path(f"{label}:", default=default_str).ask()
         else:
-            answer = _ask_or_exit(questionary.text(f"{label}:", default=default_str))
+            answer = questionary.text(f"{label}:", default=default_str).ask()
+
+        if answer is None:
+            raise KeyboardInterrupt
 
         if answer in (_SKIP_INPUT, ""):
             return UNSET
@@ -258,7 +245,9 @@ class Param:
                 widget = questionary.path(f"{self.name} {label}:", default=default_str)
             else:
                 widget = questionary.text(f"{self.name} {label}:", default=default_str)
-            answer = _ask_or_exit(widget)
+            answer = widget.ask()
+            if answer is None:
+                raise KeyboardInterrupt
             if answer in (_SKIP_INPUT, ""):
                 return UNSET
             parts.append(answer)

@@ -213,12 +213,12 @@ def test_ask_user_bool_skips_cli_provided():
     assert r.param_values["turbo"] is True
 
 
-def test_ask_user_bool_cancel_exits():
-    """Cancelling a bool prompt exits."""
+def test_ask_user_bool_cancel_raises():
+    """Cancelling a bool prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     with patch("genai_runner.params.questionary") as mock_q:
         mock_q.confirm.return_value.ask.return_value = None
-        with pytest.raises(SystemExit, match="1"):
+        with pytest.raises(KeyboardInterrupt):
             runner.ask_user()
 
 

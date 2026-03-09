@@ -335,11 +335,12 @@ def test_ask_user_path_image_uses_path_widget():
     assert r.param_values["img"] == "/fake/photo.jpg"
 
 
-def test_ask_user_cancel_exits():
+def test_ask_user_cancel_raises():
+    """Cancelling a text prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("prompt")])
     with patch("genai_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = None
-        with pytest.raises(SystemExit, match="1"):
+        with pytest.raises(KeyboardInterrupt):
             runner.ask_user()
 
 
