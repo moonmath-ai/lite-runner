@@ -508,8 +508,7 @@ class Runner:
         cmd = r.build_command(interpolated_params)
         for b in backend_list:
             b.update_config({"meta/full_command": shlex.join(cmd)})
-        colored = r.build_command(interpolated_params, r.param_sources)
-        logger.info("Command:\n%s", " ".join(colored))
+        logger.info("Command:\n%s", shlex.join(cmd))
 
         # Execute
         if not flags.dry_run:
@@ -622,18 +621,8 @@ class Runner:
     # Build command
     # -----------------------------------------------------------------------
 
-    def build_command(
-        self,
-        param_values: dict[str, object],
-        param_sources: dict[str, str] | None = None,
-    ) -> list[str]:
-        """Build command as a token list.
-
-        Without *param_sources*, returns plain tokens for subprocess.
-        With *param_sources*, tokens are wrapped in ANSI color codes
-        for display — join with ``" ".join()`` to print.
-        """
-        color = param_sources is not None
+    def build_command(self, param_values: dict[str, object]) -> list[str]:
+        """Build the subprocess command as a plain token list."""
         assert isinstance(self.command, list)
         cmd: list[str] = self.command[:]
         for p in self.params:
@@ -645,22 +634,11 @@ class Runner:
                 raise RuntimeError(msg)
             if p.type == "bool" and not val:
                 continue
-            clr = (
-                _SOURCE_COLORS.get(param_sources.get(p.name, ""), "")
-                if param_sources
-                else ""
-            )
-            rst = _RST if color else ""
-            bold = _BOLD if color else ""
-            cmd.append(f"{clr}{p.flag}{rst}")
+            cmd.append(p.flag)
             if p.type == "bool":
                 continue
             val_list = val if isinstance(val, list) else [val]
-            if color:
-                val_strs = [shlex.quote(str(v)) for v in val_list]
-            else:
-                val_strs = [str(v) for v in val_list]
-            cmd.extend(f"{bold}{clr}{v}{rst}" for v in val_strs)
+            cmd.extend(str(v) for v in val_list)
         return cmd
 
     # -----------------------------------------------------------------------
@@ -764,17 +742,6 @@ class Runner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-_RST = "\033[0m"
-_BOLD = "\033[1m"
-_SOURCE_COLORS = {
-    "prompt": "\033[31m",  # red — user prompted
-    "default": "\033[32m",  # green — default value
-    "cli": "\033[36m",  # cyan — from CLI
-    "override": "\033[36m",  # cyan — from override
-    "fixed": "\033[33m",  # yellow — fixed value=
-}
 
 
 def _subst_output(v: object, out: str) -> object:
