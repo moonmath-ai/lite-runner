@@ -46,7 +46,7 @@ from .params import (
 
 RUNS_DIR = Path.home() / "genai_runs"
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.split(".")[0])
 
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
