@@ -331,10 +331,11 @@ class Runner:
         if no_interactive:
             if missing:
                 names = [p.name for p in missing]
-                logger.error("Missing required params: %s", ", ".join(names))
                 logger.error(
-                    "Run without --no-interactive for interactive mode,"
-                    " or pass them on the command line."
+                    "Missing required params: %s. "
+                    "Run without --no-interactive for interactive mode, "
+                    "or pass them on the command line.",
+                    ", ".join(names),
                 )
                 sys.exit(2)
             new.filled = True
