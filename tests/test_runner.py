@@ -415,6 +415,18 @@ def test_build_command_skips_unset():
     assert cmd == ["echo", "hello", "--prompt", "a cat"]
 
 
+def test_build_command_skips_unset_after_copy():
+    """UNSET survives Runner.copy() (deepcopy) and is still omitted."""
+    runner = _make_runner(
+        params=[Param("prompt"), Param("mode", choices=["fast", "slow"])],
+    )
+    runner.param_values = {"prompt": "a cat", "mode": UNSET}
+    copied = runner.copy()
+    cmd = copied.build_command(copied.param_values)
+    assert cmd == ["echo", "hello", "--prompt", "a cat"]
+    assert "<unset>" not in " ".join(cmd)
+
+
 def test_config_logs_unset_as_marker():
     """Skipped params appear as '<unset>' in the config dict."""
     resolved = {"prompt": "test", "mode": UNSET}
