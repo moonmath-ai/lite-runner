@@ -221,7 +221,7 @@ class DryRunBackend:
         _dry_run_logger.info("Updating config: %s", updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
-        _dry_run_logger.info("Logging file: %s as %s as %s", path, log_as, key)
+        _dry_run_logger.info("Logging %s [%s]: %s", key, log_as, path)
 
     def set_metric(self, name: str, value: object) -> None:
         _dry_run_logger.info("Setting metric: %s to %s", name, value)
