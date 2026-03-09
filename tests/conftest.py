@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from genai_runner import Runner
+
 _FAKE_GIT_INFO = {
     "repo": "test-repo",
     "commit": "abc",
@@ -35,8 +37,6 @@ def _clean_argv():
 
 
 def _make_runner(params=None, **kwargs):
-    from genai_runner import Runner
-
     return Runner(
         command=kwargs.pop("command", "echo hello"), params=params or [], **kwargs
     )

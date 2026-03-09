@@ -180,7 +180,7 @@ class Runner:
             if not param.is_fixed:
                 param_kwargs = param.argparse_kwargs()
                 if param.type == "bool":
-                    # we need diffrentiating between explicit False and implicit False, so we set default to None
+                    # differentiate explicit False from implicit False
                     param_kwargs["default"] = None
                 parser.add_argument(param.flag, **param_kwargs)
 

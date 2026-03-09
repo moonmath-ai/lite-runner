@@ -5,6 +5,7 @@ import re
 import sys
 from unittest.mock import MagicMock, patch
 
+import git
 import pytest
 from conftest import _FAKE_GIT_INFO, _make_runner, _mock_wb_run
 
@@ -614,8 +615,6 @@ def test_execute_env_none_removes_var(tmp_path):
     ]
     exit_code, _, stdout_text, _ = runner._execute(cmd, tmp_path)
     assert exit_code == 0
-    import json
-
     result = json.loads(stdout_text.strip().splitlines()[-1])
     assert result["FOO"] == "bar"
     assert result["PATH"] is None
@@ -833,11 +832,9 @@ def test_git_info_dirty_flag():
 
 
 def test_git_info_empty_outside_repo():
-    import git as gitmodule
-
     with patch(
         "genai_runner.runner.git.Repo",
-        side_effect=gitmodule.InvalidGitRepositoryError,
+        side_effect=git.InvalidGitRepositoryError,
     ):
         assert _collect_git_info() == {}
 

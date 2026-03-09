@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+import git
+
 import wandb
+
+from .params import UNSET, _log_as_from_type
 
 if TYPE_CHECKING:
     from .params import Metric, Output, Param
@@ -252,8 +256,6 @@ def collect_param_files(
     when: str,
 ) -> list[LogFile]:
     """Collect param files to log (before or after run)."""
-    from .params import UNSET, _log_as_from_type
-
     items: list[LogFile] = []
     for p in params:
         if p.log_when != when:
@@ -379,8 +381,6 @@ def create_repo_archive(output_dir: Path) -> Path | None:
 
     Returns the archive path, or None if not in a git repo.
     """
-    import git
-
     try:
         repo = git.Repo(search_parent_directories=True)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError):
@@ -427,8 +427,6 @@ def create_repo_diff(output_dir: Path) -> Path | None:
 
     Returns the patch path, or None if repo is clean or not in a git repo.
     """
-    import git
-
     try:
         repo = git.Repo(search_parent_directories=True)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError):
