@@ -10,11 +10,11 @@ from genai_runner.backends import (
     LogFile,
     LogMetric,
     _split_glob,
-    collect_extra_outputs,
     collect_metrics,
     collect_param_files,
     collect_run_logs,
     dispatch_log_items,
+    prepare_extra_outputs,
 )
 
 # ---------------------------------------------------------------------------
@@ -126,11 +126,11 @@ def test_collect_param_files_skips_unset():
 
 
 # ---------------------------------------------------------------------------
-# Output glob + zip (collect_extra_outputs)
+# Output glob + zip (prepare_extra_outputs)
 # ---------------------------------------------------------------------------
 
 
-def test_collect_extra_outputs_glob(tmp_path):
+def test_prepare_extra_outputs_glob(tmp_path):
     """Glob pattern expands and collects each matched file."""
     (tmp_path / "frames").mkdir()
     (tmp_path / "frames" / "001.png").write_text("a")
@@ -138,19 +138,19 @@ def test_collect_extra_outputs_glob(tmp_path):
     (tmp_path / "frames" / "skip.txt").write_text("c")
 
     outputs = [Output("$output/frames/*.png", log_as="image")]
-    items = collect_extra_outputs(outputs, tmp_path)
+    items = prepare_extra_outputs(outputs, tmp_path)
     image_items = [i for i in items if i.log_as == "image"]
     assert len(image_items) == 2
 
 
-def test_collect_extra_outputs_glob_zip(tmp_path):
+def test_prepare_extra_outputs_glob_zip(tmp_path):
     """Glob + log_as='zip' creates a zip archive."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
     (tmp_path / "debug" / "b.pt").write_text("tensor2")
 
     outputs = [Output("$output/debug/*.pt", log_as="zip")]
-    items = collect_extra_outputs(outputs, tmp_path)
+    items = prepare_extra_outputs(outputs, tmp_path)
 
     # Check zip was created
     zip_path = tmp_path / "debug.zip"
@@ -164,7 +164,7 @@ def test_collect_extra_outputs_glob_zip(tmp_path):
     assert items[0].log_as == "artifact"
 
 
-def test_collect_extra_outputs_dir_zip(tmp_path):
+def test_prepare_extra_outputs_dir_zip(tmp_path):
     """Directory with log_as='zip' zips entire directory."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
@@ -172,7 +172,7 @@ def test_collect_extra_outputs_dir_zip(tmp_path):
     (tmp_path / "debug" / "sub" / "b.pt").write_text("tensor2")
 
     outputs = [Output("$output/debug", log_as="zip")]
-    items = collect_extra_outputs(outputs, tmp_path)
+    items = prepare_extra_outputs(outputs, tmp_path)
 
     zip_path = tmp_path / "debug.zip"
     assert zip_path.exists()
@@ -185,25 +185,25 @@ def test_collect_extra_outputs_dir_zip(tmp_path):
     assert items[0].path == zip_path
 
 
-def test_collect_extra_outputs_glob_no_match(tmp_path, capsys):
+def test_prepare_extra_outputs_glob_no_match(tmp_path, capsys):
     """Glob with no matches prints a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
-    items = collect_extra_outputs(outputs, tmp_path)
+    items = prepare_extra_outputs(outputs, tmp_path)
     assert items == []
     assert "matched no files" in capsys.readouterr().out
 
 
-def test_collect_extra_outputs_single_file(tmp_path):
+def test_prepare_extra_outputs_single_file(tmp_path):
     """Non-glob single file still works (regression)."""
     (tmp_path / "meta.json").write_text("{}")
 
     outputs = [Output("$output/meta.json", log_as="artifact")]
-    items = collect_extra_outputs(outputs, tmp_path)
+    items = prepare_extra_outputs(outputs, tmp_path)
     artifact_items = [i for i in items if i.log_as == "artifact"]
     assert len(artifact_items) == 1
 
 
-def test_collect_extra_outputs_duplicate_zip_raises(tmp_path):
+def test_prepare_extra_outputs_duplicate_zip_raises(tmp_path):
     """Two zip outputs with same implicit label should raise."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("x")
@@ -214,7 +214,7 @@ def test_collect_extra_outputs_duplicate_zip_raises(tmp_path):
         Output("$output/debug/*.png", log_as="zip"),
     ]
     with pytest.raises(ValueError, match="Duplicate zip label 'debug'"):
-        collect_extra_outputs(outputs, tmp_path)
+        prepare_extra_outputs(outputs, tmp_path)
 
 
 # ---------------------------------------------------------------------------

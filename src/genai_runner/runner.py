@@ -27,13 +27,13 @@ from .backends import (
     LogSummary,
     LogTags,
     WandbBackend,
-    collect_code_archive,
-    collect_code_diff,
-    collect_extra_outputs,
     collect_metrics,
     collect_param_files,
     collect_run_logs,
     dispatch_log_items,
+    prepare_code_archive,
+    prepare_code_diff,
+    prepare_extra_outputs,
 )
 from .params import (
     UNSET,
@@ -458,8 +458,8 @@ class Runner:
         # Save code snapshot (git archive + dirty diff)
         code_items = []
         for name, collector in [
-            ("code archive", lambda: collect_code_archive(output_dir, git_info)),
-            ("code diff", lambda: collect_code_diff(output_dir, git_info)),
+            ("code archive", lambda: prepare_code_archive(output_dir)),
+            ("code diff", lambda: prepare_code_diff(output_dir)),
         ]:
             try:
                 code_items.extend(collector())
@@ -548,7 +548,7 @@ class Runner:
             ),
             (
                 "collect extra outputs",
-                lambda: collect_extra_outputs(self.outputs, output_dir),
+                lambda: prepare_extra_outputs(self.outputs, output_dir),
             ),
             (
                 "collect run logs",

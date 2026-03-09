@@ -73,6 +73,8 @@ class LogBackend(Protocol):
 
     def log_file(self, path: Path, log_as: str, key: str) -> None: ...
 
+    def log_item(self, item: LogItem) -> None: ...
+
     def set_metric(self, name: str, value: object) -> None: ...
 
     def set_summary(self, summary: dict) -> None: ...
@@ -127,6 +129,9 @@ class WandbBackend:
         else:
             raise ValueError(f"Invalid log_as: {log_as}")
 
+    def log_item(self, item: LogItem) -> None:
+        _dispatch_item(self, item)
+
     def set_metric(self, name: str, value: object) -> None:
         self.run.summary[name] = value
 
@@ -171,6 +176,9 @@ class JsonBackend:
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         self.files_logged.append({"path": str(path), "log_as": log_as, "key": key})
+
+    def log_item(self, item: LogItem) -> None:
+        _dispatch_item(self, item)
 
     def set_metric(self, name: str, value: object) -> None:
         self.metrics[name] = value
@@ -220,6 +228,9 @@ class DryRunBackend:
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         print(f"[dry-run] Logging file: {path} as {log_as} as {key}")
 
+    def log_item(self, item: LogItem) -> None:
+        _dispatch_item(self, item)
+
     def set_metric(self, name: str, value: object) -> None:
         print(f"[dry-run] Setting metric: {name} to {value}")
 
@@ -238,22 +249,30 @@ class DryRunBackend:
 # ---------------------------------------------------------------------------
 
 
-def dispatch_log_items(backends: list[LogBackend], items: list[LogItem]) -> None:
+def _dispatch_item(backend: LogBackend, item: LogItem) -> None:
+    """Route a LogItem to the appropriate backend method."""
+    if isinstance(item, LogFile):
+        backend.log_file(item.path, item.log_as, item.key)
+    elif isinstance(item, LogMetric):
+        backend.set_metric(item.name, item.value)
+    elif isinstance(item, LogSummary):
+        backend.set_summary(item.summary)
+    elif isinstance(item, LogTags):
+        backend.set_tags(item.tags)
+
+
+def dispatch_log_items(
+    backends: list[LogBackend], items: list[LogItem]
+) -> None:
     """Send each log item to every backend, catching per-item errors."""
     for b in backends:
         for item in items:
             try:
-                if isinstance(item, LogFile):
-                    b.log_file(item.path, item.log_as, item.key)
-                elif isinstance(item, LogMetric):
-                    b.set_metric(item.name, item.value)
-                elif isinstance(item, LogSummary):
-                    b.set_summary(item.summary)
-                elif isinstance(item, LogTags):
-                    b.set_tags(item.tags)
+                b.log_item(item)
             except Exception as e:  # noqa: BLE001
                 print(
-                    f"[genai_runner] Warning: {type(b).__name__} failed on {item}: {e}"
+                    f"[genai_runner] Warning:"
+                    f" {type(b).__name__} failed on {item}: {e}"
                 )
 
 
@@ -314,7 +333,7 @@ def collect_param_files(
     return items
 
 
-def collect_extra_outputs(
+def prepare_extra_outputs(
     outputs: list[Output],
     output_dir: Path,
 ) -> list[LogFile]:
@@ -414,15 +433,12 @@ def create_zip(
     return zip_path
 
 
-def create_repo_archive(output_dir: Path, git_info: dict) -> Path | None:
+def create_repo_archive(output_dir: Path) -> Path | None:
     """Create git archive (tar.gz) of tracked files at HEAD.
 
     Returns the archive path, or None if not in a git repo.
     """
     import git
-
-    if not git_info:
-        return None
 
     try:
         repo = git.Repo(search_parent_directories=True)
@@ -465,19 +481,19 @@ def create_repo_archive(output_dir: Path, git_info: dict) -> Path | None:
     return archive_path
 
 
-def create_repo_diff(output_dir: Path, git_info: dict) -> Path | None:
+def create_repo_diff(output_dir: Path) -> Path | None:
     """Create dirty diff patch file.
 
     Returns the patch path, or None if repo is clean or not in a git repo.
     """
     import git
 
-    if not git_info or not git_info.get("dirty"):
-        return None
-
     try:
         repo = git.Repo(search_parent_directories=True)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        return None
+
+    if not repo.is_dirty(untracked_files=True, submodules=True):
         return None
 
     diff_text = repo.git.diff("HEAD", submodule="diff")
@@ -491,17 +507,17 @@ def create_repo_diff(output_dir: Path, git_info: dict) -> Path | None:
     return diff_path
 
 
-def collect_code_archive(output_dir: Path, git_info: dict) -> list[LogFile]:
-    """Collect code archive for logging."""
-    path = create_repo_archive(output_dir, git_info)
+def prepare_code_archive(output_dir: Path) -> list[LogFile]:
+    """Create code archive and return as LogFile list."""
+    path = create_repo_archive(output_dir)
     if path:
         return [LogFile(path, "artifact", "code")]
     return []
 
 
-def collect_code_diff(output_dir: Path, git_info: dict) -> list[LogFile]:
-    """Collect dirty diff patch for logging."""
-    path = create_repo_diff(output_dir, git_info)
+def prepare_code_diff(output_dir: Path) -> list[LogFile]:
+    """Create dirty diff patch and return as LogFile list."""
+    path = create_repo_diff(output_dir)
     if path:
         return [LogFile(path, "artifact", "code-diff")]
     return []
