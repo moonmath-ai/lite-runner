@@ -13,11 +13,13 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import IO, Self, TextIO
+from typing import IO, TYPE_CHECKING, Self, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 import git
 
@@ -254,9 +256,9 @@ class Runner:
         new = self.copy()
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
-                if self.params_by_name[name].nargs is not None:
-                    val = self.params_by_name[name].cast_nargs(val)
-                new.param_values[name] = val
+                param = self.params_by_name[name]
+                cast_val = param.cast_nargs(val) if param.nargs is not None else val
+                new.param_values[name] = cast_val
                 new.param_sources[name] = "cli"
 
         new.run_flags = RunFlags.from_namespace(parsed_args)

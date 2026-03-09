@@ -114,7 +114,8 @@ class WandbBackend:
             text = path.read_text(errors="replace")
             self.run.log({key: wandb.Html(f"<pre>{text}</pre>")})
         else:
-            raise ValueError(f"Invalid log_as: {log_as}")
+            msg = f"Invalid log_as: {log_as}"
+            raise ValueError(msg)
 
     def set_metric(self, name: str, value: object) -> None:
         self.run.summary[name] = value

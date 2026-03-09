@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 import questionary
 
@@ -203,7 +205,9 @@ class Param:
             _PARAM_TYPE_MAP.get(t, str)(v) for v, t in zip(values, types, strict=True)
         ]
 
-    def ask(self, default: object = None) -> Any:
+    def ask(
+        self, default: object = None
+    ) -> bool | int | float | str | list[object] | _Unset:
         """Interactively prompt the user for this param's value."""
         if self.type == "bool":
             return self._prompt_bool(default)
