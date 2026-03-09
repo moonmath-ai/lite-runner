@@ -516,7 +516,7 @@ class Runner:
     def post_run(
         self,
         backends: list[LogBackend],
-        param_values: dict,
+        param_values: dict[str, object],
         output_dir: Path,
         exit_code: int,
         duration: float,
@@ -602,8 +602,8 @@ class Runner:
 
     def build_command(
         self,
-        param_values: dict,
-        param_sources: dict | None = None,
+        param_values: dict[str, object],
+        param_sources: dict[str, str] | None = None,
     ) -> list[str]:
         """Build command as a token list.
 
@@ -751,7 +751,9 @@ def _subst_output(v: object, out: str) -> object:
     return v.replace("$output", out) if isinstance(v, str) else v
 
 
-def _interpolate_output(params: dict, output_dir: Path) -> dict:
+def _interpolate_output(
+    params: dict[str, object], output_dir: Path
+) -> dict[str, object]:
     """Return a copy of *params* with $output replaced in string values."""
     out = str(output_dir)
     return {
@@ -762,7 +764,7 @@ def _interpolate_output(params: dict, output_dir: Path) -> dict:
     }
 
 
-def _collect_git_info() -> dict:
+def _collect_git_info() -> dict[str, object]:
     try:
         repo = git.Repo(search_parent_directories=True)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError):

@@ -158,9 +158,13 @@ class Param:
         """Params with a value= are never prompted or parsed from CLI."""
         return self.value is not None
 
-    def argparse_kwargs(self) -> dict:
+    def argparse_kwargs(self) -> dict[str, object]:
         """Build kwargs for argparse.add_argument."""
-        kwargs: dict = {"dest": self.dest, "default": None, "help": self.help or None}
+        kwargs: dict[str, object] = {
+            "dest": self.dest,
+            "default": None,
+            "help": self.help or None,
+        }
         if self.type == "bool":
             kwargs["action"] = "store_true"
             kwargs["default"] = False
@@ -178,7 +182,7 @@ class Param:
             kwargs["choices"] = self.choices
         return kwargs
 
-    def cast_nargs(self, values: list) -> list:
+    def cast_nargs(self, values: list[object]) -> list[object]:
         """Cast each element in *values* according to this param's type list."""
         types = self.type_list
         if len(values) != len(types):

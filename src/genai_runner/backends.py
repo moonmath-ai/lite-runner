@@ -48,19 +48,19 @@ class LogBackend(Protocol):
         name: str | None,
         group: str | None,
         tags: list[str],
-        config: dict,
+        config: dict[str, object],
     ) -> None: ...
 
     @property
     def run_name(self) -> str: ...
 
-    def update_config(self, updates: dict) -> None: ...
+    def update_config(self, updates: dict[str, object]) -> None: ...
 
     def log_file(self, path: Path, log_as: str, key: str) -> None: ...
 
     def set_metric(self, name: str, value: object) -> None: ...
 
-    def set_summary(self, summary: dict) -> None: ...
+    def set_summary(self, summary: dict[str, object]) -> None: ...
 
     def set_tags(self, tags: list[str]) -> None: ...
 
@@ -76,7 +76,7 @@ class WandbBackend:
         name: str | None,
         group: str | None,
         tags: list[str],
-        config: dict,
+        config: dict[str, object],
     ) -> None:
         self.run = wandb.init(
             project=project,
@@ -95,7 +95,7 @@ class WandbBackend:
     def run_url(self) -> str:
         return self.run.url
 
-    def update_config(self, updates: dict) -> None:
+    def update_config(self, updates: dict[str, object]) -> None:
         self.run.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
@@ -115,7 +115,7 @@ class WandbBackend:
     def set_metric(self, name: str, value: object) -> None:
         self.run.summary[name] = value
 
-    def set_summary(self, summary: dict) -> None:
+    def set_summary(self, summary: dict[str, object]) -> None:
         self.run.summary.update(summary)
 
     def set_tags(self, tags: list[str]) -> None:
@@ -134,7 +134,7 @@ class JsonBackend:
         name: str | None,
         group: str | None,
         tags: list[str],
-        config: dict,
+        config: dict[str, object],
     ) -> None:
         self.metadata = {
             "project": project,
@@ -151,7 +151,7 @@ class JsonBackend:
     def run_name(self) -> str:
         return self.metadata["name"]
 
-    def update_config(self, updates: dict) -> None:
+    def update_config(self, updates: dict[str, object]) -> None:
         self.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
@@ -160,7 +160,7 @@ class JsonBackend:
     def set_metric(self, name: str, value: object) -> None:
         self.metrics[name] = value
 
-    def set_summary(self, summary: dict) -> None:
+    def set_summary(self, summary: dict[str, object]) -> None:
         assert not self.summary, "set_summary called twice"
         self.summary = summary
 
@@ -191,7 +191,7 @@ class DryRunBackend:
         name: str | None,
         group: str | None,
         tags: list[str],
-        config: dict,
+        config: dict[str, object],
     ) -> None:
         self.run_name = name or "dry_run"
         print(f"[dry-run] Project: {project}")
@@ -200,7 +200,7 @@ class DryRunBackend:
         print(f"[dry-run] Tags: {tags}")
         print(f"[dry-run] Config: {config}")
 
-    def update_config(self, updates: dict) -> None:
+    def update_config(self, updates: dict[str, object]) -> None:
         print(f"[dry-run] Updating config: {updates}")
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
@@ -209,7 +209,7 @@ class DryRunBackend:
     def set_metric(self, name: str, value: object) -> None:
         print(f"[dry-run] Setting metric: {name} to {value}")
 
-    def set_summary(self, summary: dict) -> None:
+    def set_summary(self, summary: dict[str, object]) -> None:
         print(f"[dry-run] Setting summary: {summary}")
 
     def set_tags(self, tags: list[str]) -> None:
@@ -250,7 +250,7 @@ def collect_metrics(
 
 def collect_param_files(
     params: list[Param],
-    param_values: dict,
+    param_values: dict[str, object],
     when: str,
 ) -> list[LogFile]:
     """Collect param files to log (before or after run)."""
