@@ -269,8 +269,13 @@ def collect_param_files(
     params: list[Param],
     param_values: dict[str, object],
     when: str,
+    *,
+    dry_run: bool = False,
 ) -> list[LogFile]:
-    """Collect param files to log (before or after run)."""
+    """Collect param files to log (before or after run).
+
+    When *dry_run*, skips existence checks.
+    """
     items: list[LogFile] = []
     for p in params:
         if p.log_when != when:
@@ -284,7 +289,7 @@ def collect_param_files(
             if log_as is None:
                 continue
             path = Path(str(v))
-            if not path.exists():
+            if not dry_run and not path.exists():
                 msg = f"File not found: {path} (param '{p.name}')"
                 raise FileNotFoundError(msg)
             items.append(LogFile(path, log_as, key=p.name))
@@ -294,11 +299,16 @@ def collect_param_files(
 def prepare_extra_outputs(
     outputs: list[Output],
     output_dir: Path,
+    *,
+    dry_run: bool = False,
 ) -> list[LogFile]:
     """Collect Output declarations (globs, directories, single files).
 
     Preparation steps (zip creation, file copying) happen here so they
     are isolated from the dispatch phase.
+
+    When *dry_run*, skips existence checks, globbing, copying, and zip
+    creation.  Returns LogFiles with the paths that *would* be used.
     """
     out = str(output_dir)
     seen_zips: set[str] = set()
@@ -308,6 +318,21 @@ def prepare_extra_outputs(
         raw_path = o.path.replace("$output", out)
         is_glob = any(c in raw_path for c in ("*", "?", "["))
         path = Path(raw_path)
+
+        if dry_run:
+            if is_glob or raw_path.endswith("/"):
+                label = o.name or Path(raw_path.rstrip("/")).name or "output"
+                if o.log_as == "zip":
+                    items.append(
+                        LogFile(output_dir / f"{label}.zip", "artifact", key=label)
+                    )
+                else:
+                    items.append(LogFile(path, o.log_as, key=label))
+            else:
+                # Single file
+                key = o.name or path.stem
+                items.append(LogFile(path, o.log_as, key=key))
+            continue
 
         if is_glob:
             base, pattern = _split_glob(raw_path)
@@ -361,12 +386,15 @@ def prepare_extra_outputs(
     return items
 
 
-def collect_run_logs(output_dir: Path) -> list[LogFile]:
-    """Collect run/stdout/stderr log files."""
+def collect_run_logs(output_dir: Path, *, dry_run: bool = False) -> list[LogFile]:
+    """Collect run/stdout/stderr log files.
+
+    When *dry_run*, returns all three log files without checking existence.
+    """
     return [
         LogFile(path, "text", key=name)
         for name in ("run.log", "stdout.log", "stderr.log")
-        if (path := output_dir / name).exists()
+        if (path := output_dir / name).exists() or dry_run
     ]
 
 
@@ -398,19 +426,23 @@ def _open_repo() -> git.Repo | None:
         return None
 
 
-def create_repo_archive(output_dir: Path) -> Path | None:
+def create_repo_archive(output_dir: Path, *, dry_run: bool = False) -> Path | None:
     """Create git archive (tar.gz) of tracked files at HEAD.
 
     Returns the archive path, or None if not in a git repo.
+    When *dry_run*, returns the path without creating any files.
     """
     repo = _open_repo()
     if repo is None:
         return None
 
+    archive_path = output_dir / "code" / "source.tar.gz"
+    if dry_run:
+        return archive_path
+
     code_dir = output_dir / "code"
     code_dir.mkdir(exist_ok=True)
 
-    archive_path = code_dir / "source.tar.gz"
     tar_path = code_dir / "source.tar"
     with tar_path.open("wb") as f:
         repo.archive(f, format="tar")
@@ -443,40 +475,41 @@ def create_repo_archive(output_dir: Path) -> Path | None:
     return archive_path
 
 
-def create_repo_diff(output_dir: Path) -> Path | None:
+def create_repo_diff(output_dir: Path, *, dry_run: bool = False) -> Path | None:
     """Create dirty diff patch file.
 
     Returns the patch path, or None if repo is clean or not in a git repo.
+    When *dry_run*, checks dirty status (read-only) but skips writing.
     """
     repo = _open_repo()
     if repo is None:
-        return None
-
-    if not repo.is_dirty(untracked_files=True, submodules=True):
         return None
 
     diff_text = repo.git.diff("HEAD", submodule="diff")
     if not diff_text:
         return None
 
+    diff_path = output_dir / "code" / "dirty.patch"
+    if dry_run:
+        return diff_path
+
     code_dir = output_dir / "code"
     code_dir.mkdir(exist_ok=True)
-    diff_path = code_dir / "dirty.patch"
     diff_path.write_text(diff_text)
     return diff_path
 
 
-def prepare_code_archive(output_dir: Path) -> list[LogFile]:
+def prepare_code_archive(output_dir: Path, *, dry_run: bool = False) -> list[LogFile]:
     """Create code archive and return as LogFile list."""
-    path = create_repo_archive(output_dir)
+    path = create_repo_archive(output_dir, dry_run=dry_run)
     if path:
         return [LogFile(path, "artifact", "code")]
     return []
 
 
-def prepare_code_diff(output_dir: Path) -> list[LogFile]:
+def prepare_code_diff(output_dir: Path, *, dry_run: bool = False) -> list[LogFile]:
     """Create dirty diff patch and return as LogFile list."""
-    path = create_repo_diff(output_dir)
+    path = create_repo_diff(output_dir, dry_run=dry_run)
     if path:
         return [LogFile(path, "artifact", "code-diff")]
     return []

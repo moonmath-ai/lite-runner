@@ -484,7 +484,7 @@ class Runner:
             ("code diff", prepare_code_diff),
         ]:
             try:
-                pre_run_files.extend(fn(output_dir))
+                pre_run_files.extend(fn(output_dir, dry_run=flags.dry_run))
             except Exception as e:  # noqa: BLE001
                 logger.warning("%s failed: %s", name, e)
 
@@ -493,7 +493,12 @@ class Runner:
 
         # Collect input files (log_when == "before")
         pre_run_files.extend(
-            collect_param_files(r.params, interpolated_params, when="before")
+            collect_param_files(
+                r.params,
+                interpolated_params,
+                when="before",
+                dry_run=flags.dry_run,
+            )
         )
 
         # Log pre-run files
@@ -529,6 +534,7 @@ class Runner:
             stdout_text,
             r.tags,
             aborted=aborted,
+            dry_run=flags.dry_run,
         )
         if aborted or exit_code:
             logger.error("Aborting run due to aborted or failed exit code")
@@ -545,6 +551,7 @@ class Runner:
         run_tags: list[str],
         *,
         aborted: bool = False,
+        dry_run: bool = False,
     ) -> None:
         """Run post-execution steps (metrics, file uploads, code snapshot).
 
@@ -576,15 +583,24 @@ class Runner:
         file_steps: list[tuple[str, Callable[[], list[LogFile]]]] = [
             (
                 "output files",
-                lambda: collect_param_files(self.params, param_values, when="after"),
+                lambda: collect_param_files(
+                    self.params,
+                    param_values,
+                    when="after",
+                    dry_run=dry_run,
+                ),
             ),
             (
                 "extra outputs",
-                lambda: prepare_extra_outputs(self.outputs, output_dir),
+                lambda: prepare_extra_outputs(
+                    self.outputs,
+                    output_dir,
+                    dry_run=dry_run,
+                ),
             ),
             (
                 "run logs",
-                lambda: collect_run_logs(output_dir),
+                lambda: collect_run_logs(output_dir, dry_run=dry_run),
             ),
         ]
         for step_name, collector in file_steps:
