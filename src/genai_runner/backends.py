@@ -340,9 +340,7 @@ def prepare_extra_outputs(
             items.append(LogFile(zip_path, "artifact", key=label))
         else:
             items.extend(
-                LogFile(m, o.log_as, key=label)
-                for m in matches
-                if m.is_file()
+                LogFile(m, o.log_as, key=label) for m in matches if m.is_file()
             )
 
     return items

@@ -555,9 +555,7 @@ class Runner:
         file_steps: list[tuple[str, object]] = [
             (
                 "output files",
-                lambda: collect_param_files(
-                    self.params, param_values, when="after"
-                ),
+                lambda: collect_param_files(self.params, param_values, when="after"),
             ),
             (
                 "extra outputs",
@@ -572,9 +570,7 @@ class Runner:
             try:
                 files.extend(collector())
             except Exception as e:  # noqa: BLE001
-                print(
-                    f"[genai_runner] Warning: {step_name} failed: {e}"
-                )
+                print(f"[genai_runner] Warning: {step_name} failed: {e}")
 
         # Send to each backend
         for b in backends:
@@ -587,20 +583,14 @@ class Runner:
                 if status != "success":
                     b.set_tags([*run_tags, status])
             except Exception as e:  # noqa: BLE001
-                print(
-                    f"[genai_runner] Warning:"
-                    f" {type(b).__name__} logging failed: {e}"
-                )
+                print(f"[genai_runner] Warning: {type(b).__name__} logging failed: {e}")
 
         # Finish each backend individually
         for b in backends:
             try:
                 b.finish(exit_code)
             except Exception as e:  # noqa: BLE001
-                print(
-                    f"[genai_runner] Warning:"
-                    f" finish {type(b).__name__} failed: {e}"
-                )
+                print(f"[genai_runner] Warning: finish {type(b).__name__} failed: {e}")
 
         print(f"{LOGGING_PREFIX} Status: {status} (exit code {exit_code})")
         print(f"{LOGGING_PREFIX} Duration: {duration:.1f}s")
@@ -648,9 +638,7 @@ class Runner:
     # Subprocess execution
     # -----------------------------------------------------------------------
 
-    def execute(
-        self, cmd: list[str], output_dir: Path
-    ) -> tuple[int, float, str, bool]:
+    def execute(self, cmd: list[str], output_dir: Path) -> tuple[int, float, str, bool]:
         """Run subprocess, stream stdout/stderr to terminal and log files.
 
         Returns (exit_code, duration_seconds, stdout_text, aborted).
