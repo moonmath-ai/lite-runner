@@ -17,11 +17,11 @@ Python >=3.11 required. Build backend is hatchling.
 
 ## Architecture
 
-Three modules under `src/genai_runner/`:
+Four modules under `src/genai_runner/`:
 
-- **`params.py`** — Data classes and type system: `Param`, `Output`, `Metric`, `_RunFlags`, type constants, `UNSET` sentinel.
-- **`backends.py`** — `LogBackend` protocol, `WandbBackend`, `JsonBackend`.
-- **`runner.py`** — `Runner` orchestrator and module-level helpers.
+- **`params.py`** — Data classes and type system: `Param`, `Output`, `Metric`, type constants, `UNSET` sentinel.
+- **`backends.py`** — `LogBackend` protocol, `WandbBackend`, `JsonBackend`, `DryRunBackend`. Collect/prepare functions for metrics, files, code snapshots.
+- **`runner.py`** — `Runner` orchestrator, `RunFlags`, and module-level helpers.
 - **`__init__.py`** — Re-exports the public API.
 
 Four core abstractions:
@@ -37,7 +37,7 @@ Four core abstractions:
   Each pipeline method returns a new Runner via `copy.copy`:
   `parse_cli()` → `override()` → `resolve_defaults()` → `ask_user()`.
   `run()` auto-calls any steps not yet applied.
-  Values are tracked in `_param_values` with source tags in `_param_sources`
+  Values are tracked in `param_values` with source tags in `param_sources`
   (`"cli"`, `"override"`, `"default"`, `"fixed"`, `"prompt"`).
   Post-run steps are individually try-excepted so W&B always finishes.
 
@@ -53,8 +53,8 @@ The `UNSET` sentinel marks params the user explicitly skipped (typed `-` at prom
 
 ## Testing
 
-Tests are in `tests/test_genai_runner.py`. W&B is mocked in integration tests.
-The test file covers: param validation, CLI parsing, value resolution, interactive prompts, command building, metric extraction, subprocess execution, output logging, and full run lifecycle.
+Tests are split across `tests/test_runner.py`, `tests/test_params.py`, `tests/test_backends.py`, and `tests/conftest.py`. W&B is mocked in integration tests.
+Tests cover: param validation, CLI parsing, value resolution, interactive prompts, command building, metric extraction, subprocess execution, output logging, and full run lifecycle.
 
 ## Keeping docs in sync
 

@@ -129,7 +129,7 @@ Loop with `override()`. Runs are grouped in W&B for easy comparison:
 runner = Runner(
     command="python gen.py",
     params=[...],
-    group="lr-sweep",           # groups all runs together in W&B UI
+    run_group="lr-sweep",        # groups all runs together in W&B UI
 )
 for lr in [1e-3, 1e-4, 1e-5]:
     runner.override(learning_rate=lr).run(no_interactive=True)
@@ -154,7 +154,7 @@ Runner(
     tags=["experiment-1"],            # W&B run tags
     env={"CUDA_VISIBLE_DEVICES": "0"},  # extra env vars for subprocess
     project="my-project",             # default: git repo name
-    group="my-sweep",                 # W&B run group for sweeps (None = no grouping)
+    run_group="my-sweep",              # W&B run group for sweeps (None = no grouping)
 )
 ```
 
@@ -176,7 +176,7 @@ Methods:
 |--------|-------------|
 | `parse_cli(argv)` | Parse CLI args (default: `sys.argv[1:]`) |
 | `override(**kwargs)` | Set param values by name |
-| `with_metadata(project=, group=, tags=)` | Update W&B metadata |
+| `with_metadata(project=, run_group=, tags=)` | Update W&B metadata |
 | `resolve_defaults()` | Apply defaults and fixed values |
 | `ask_user(no_interactive=)` | Prompt for missing values |
 | `run(...)` | Auto-calls any unapplied steps, then executes |
@@ -188,6 +188,7 @@ Methods:
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print command and exit |
+| `--min-free-space-gib N` | Minimum free disk space in GiB (default: 1.0) |
 | `--no-interactive` | Fail if required params missing |
 | `--no-wandb` | Skip W&B logging (still logs to JSON) |
 | `--run-name NAME` | Override W&B run name |
