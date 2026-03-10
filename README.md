@@ -17,22 +17,6 @@ Write a small Python script per model that declares params, outputs, and metrics
 subprocess execution, stdout/stderr capture, metric extraction, file uploads to W&B,
 and code snapshots for reproducibility.
 
-## Install
-
-Install the package using pip (or uv, poetry, etc.):
-
-```bash
-pip install git+https://github.com/moonmath-ai/LiteRunner.git
-```
-
-Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies):
-
-```python
-# /// script
-# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/LiteRunner"]
-# ///
-```
-
 ## Quick start
 
 Create a `run.py` for your model:
