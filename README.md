@@ -22,6 +22,7 @@ and code snapshots for reproducibility.
 Create a `run.py` for your model:
 
 ```python
+#!/usr/bin/env -S uv run
 # /// script
 # dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/LiteRunner"]
 # ///
@@ -43,12 +44,13 @@ if __name__ == "__main__":
     runner.run()
 ```
 
-Then run it:
+Then run it (requires [uv](https://docs.astral.sh/uv/getting-started/installation/)):
 
 ```bash
-uv run run.py --prompt "a cat walking"           # interactive TUI fills missing params
-uv run run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
-uv run run.py --prompt "a cat" --dry-run         # print command, don't run
+chmod +x run.py
+./run.py --prompt "a cat walking"           # interactive TUI fills missing params
+./run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
+./run.py --prompt "a cat" --dry-run         # print command, don't run
 ```
 
 ## What it does
