@@ -1,5 +1,6 @@
 """Tests for lite_runner.params."""
 
+from copy import copy
 from unittest.mock import patch
 
 import pytest
@@ -276,5 +277,86 @@ def test_skip_nargs_returns_unset() -> None:
     )
     with patch("lite_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "-"
+        r = runner.ask_user()
+    assert r.param_values["image"] is UNSET
+
+
+# ---------------------------------------------------------------------------
+# UNSET sentinel
+# ---------------------------------------------------------------------------
+
+
+def test_unset_repr() -> None:
+    assert repr(UNSET) == "<unset>"
+
+
+def test_unset_copy() -> None:
+    assert copy(UNSET) is UNSET
+
+
+# ---------------------------------------------------------------------------
+# Bool param default warning
+# ---------------------------------------------------------------------------
+
+
+def test_bool_param_default_warns(caplog: pytest.LogCaptureFixture) -> None:
+    """Bool param with non-False default logs a warning."""
+    with caplog.at_level("WARNING", logger="lite_runner"):
+        Param("turbo", type="bool", default=True)
+    assert "ignored" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# cast_nargs wrong length
+# ---------------------------------------------------------------------------
+
+
+def test_cast_nargs_wrong_length_raises() -> None:
+    p = Param("x", type=["float", "float"])
+    with pytest.raises(ValueError, match="Expected 2 values, got 3"):
+        p.cast_nargs(["1.0", "2.0", "3.0"])
+
+
+# ---------------------------------------------------------------------------
+# Multi-value nargs: cancel raises KeyboardInterrupt
+# ---------------------------------------------------------------------------
+
+
+def test_nargs_cancel_raises() -> None:
+    """Cancelling any nargs element raises KeyboardInterrupt."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "image",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+            ),
+        ],
+    )
+    with patch("lite_runner.params.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = None
+        with pytest.raises(KeyboardInterrupt):
+            runner.ask_user()
+
+
+# ---------------------------------------------------------------------------
+# Multi-value nargs: empty answer on non-first element returns UNSET
+# ---------------------------------------------------------------------------
+
+
+def test_nargs_empty_second_element_returns_unset() -> None:
+    """Empty answer on second nargs element returns UNSET."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "image",
+                type=["float", "float"],
+                labels=["start", "end"],
+            ),
+        ],
+    )
+    with patch("lite_runner.params.questionary") as mock_q:
+        answers = iter(["1.0", ""])
+        mock_q.text.return_value.ask.side_effect = lambda: next(answers)
         r = runner.ask_user()
     assert r.param_values["image"] is UNSET

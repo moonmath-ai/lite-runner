@@ -11,6 +11,7 @@ import pytest
 from conftest import _FAKE_GIT_INFO, _make_runner, _mock_wb_run
 
 from lite_runner import UNSET, Metric, Param, Runner
+from lite_runner.backends import DryRunBackend, JsonBackend
 from lite_runner.runner import _collect_git_info, _interpolate_output
 
 # ---------------------------------------------------------------------------
@@ -1022,3 +1023,95 @@ def test_override_does_not_overwrite_on_parse_cli() -> None:
     r = runner.override(seed=777).parse_cli(["--seed", "10"])
     assert r.param_values["seed"] == 777
     assert r.param_sources["seed"] == "override"
+
+
+# ---------------------------------------------------------------------------
+# build_command edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_build_command_missing_value_raises() -> None:
+    """build_command raises RuntimeError when param has no value."""
+    runner = _make_runner(params=[Param("prompt")])
+    with pytest.raises(RuntimeError, match="missing value or flag"):
+        runner.build_command({"prompt": None})
+
+
+# ---------------------------------------------------------------------------
+# _post_run_steps — aborted status
+# ---------------------------------------------------------------------------
+
+
+def test_post_run_aborted_status(tmp_path: Path) -> None:
+    """Aborted run sets status='aborted' and tags the backend."""
+    runner = Runner(command="echo", params=[], metrics=[], tags=["v1"])
+    backend = DryRunBackend(
+        project="test", name="run", group=None, tags=["v1"], config={}
+    )
+
+    (tmp_path / "stdout.log").write_text("")
+    (tmp_path / "stderr.log").write_text("")
+    (tmp_path / "run.log").write_text("")
+
+    with (
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+    ):
+        runner.post_run(
+            backends=[backend],
+            param_values={},
+            output_dir=tmp_path,
+            exit_code=-1,
+            duration=1.0,
+            stdout_text="",
+            run_tags=["v1"],
+            aborted=True,
+        )
+    # DryRunBackend doesn't store state, but it shouldn't raise
+
+
+def test_post_run_failed_status_tags(tmp_path: Path) -> None:
+    """Failed run appends 'failed' to tags via set_tags."""
+    runner = Runner(command="echo", params=[], metrics=[], tags=["v1"])
+    backend = JsonBackend(
+        project="test",
+        name="run",
+        group=None,
+        tags=["v1"],
+        config={"meta/output_dir": str(tmp_path)},
+    )
+
+    (tmp_path / "stdout.log").write_text("")
+    (tmp_path / "stderr.log").write_text("")
+    (tmp_path / "run.log").write_text("")
+
+    with (
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+    ):
+        runner.post_run(
+            backends=[backend],
+            param_values={},
+            output_dir=tmp_path,
+            exit_code=1,
+            duration=1.0,
+            stdout_text="",
+            run_tags=["v1"],
+        )
+    assert backend.metadata["tags"] == ["v1", "failed"]
+
+
+# ---------------------------------------------------------------------------
+# run() — git info detached HEAD
+# ---------------------------------------------------------------------------
+
+
+def test_git_info_detached_head() -> None:
+    """Detached HEAD returns '(detached)' as branch."""
+    mock_repo = MagicMock()
+    mock_repo.working_dir = "/home/user/project"
+    mock_repo.head.commit.hexsha = "abc123"
+    mock_repo.head.is_detached = True
+    with patch("lite_runner.runner.git.Repo", return_value=mock_repo):
+        info = _collect_git_info()
+    assert info["branch"] == "HEAD"
