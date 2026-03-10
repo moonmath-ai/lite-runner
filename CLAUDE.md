@@ -5,15 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development
 
 ```bash
-uv sync                          # install deps (including dev group)
-uv run pytest                    # run all tests
+uv sync                          # install deps (dev, test, typing groups by default)
+uv run just prepare              # one-time: install pre-commit hooks
+uv run pytest                    # run all tests (includes doctests via --doctest-modules)
 uv run pytest -k test_name       # run a single test by name
 uv run pytest -x                 # stop on first failure
-ruff format .                    # format
-ruff check .                     # lint
+uv run ruff format .             # format
+uv run ruff check .              # lint
+uv run mypy                      # type check (strict mode)
 ```
 
-Python >=3.10 required. Build backend is hatchling.
+If you changed package metadata or entry points, use `uv run just test` instead of `uv run pytest` — it forces a fresh hatchling rebuild via `--reinstall-package`.
+
+Python >=3.10 required. Build backend is hatchling. Version is derived from git tags via hatch-vcs (`_version.py` is auto-generated — don't edit it).
+
+Ruff is configured with `select = ["ALL"]` — nearly all lint rules are enabled. Pytest runs with `--reverse` ordering, coverage enabled, and `filterwarnings = ["error"]` so new warnings fail tests.
 
 ## Architecture
 
