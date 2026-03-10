@@ -204,7 +204,9 @@ class JsonBackend:
 
     def set_summary(self, summary: dict[str, object]) -> None:
         """Set the run summary dict."""
-        assert not self.summary, "set_summary called twice"
+        if self.summary:
+            msg = "set_summary called twice"
+            raise RuntimeError(msg)
         self.summary = summary
 
     def set_tags(self, tags: list[str]) -> None:

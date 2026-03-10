@@ -424,7 +424,7 @@ class Runner:
         except KeyboardInterrupt:
             sys.exit(1)
         except (ValueError, OSError) as e:
-            logger.error("%s", e)
+            logger.error("%s", e)  # noqa: TRY400
             sys.exit(2)
 
         # Git info and project
@@ -503,7 +503,7 @@ class Runner:
         ]:
             try:
                 pre_run_files.extend(fn(output_dir, dry_run=flags.dry_run))
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s failed: %s", name, e)
 
         # Interpolate $output in param values
@@ -524,7 +524,7 @@ class Runner:
             try:
                 for f in pre_run_files:
                     b.log_file(f.path, f.log_as, f.key)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s pre-run logging failed: %s", type(b).__name__, e)
 
         # Build command
@@ -640,7 +640,7 @@ class Runner:
         for step_name, collector in file_steps:
             try:
                 files.extend(collector())
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s failed: %s", step_name, e)
 
         # Send to each backend
@@ -653,14 +653,14 @@ class Runner:
                 b.set_summary(summary)
                 if status != "success":
                     b.set_tags([*run_tags, status])
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s logging failed: %s", type(b).__name__, e)
 
         # Finish each backend individually
         for b in backends:
             try:
                 b.finish(exit_code)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("finish %s failed: %s", type(b).__name__, e)
 
         logger.info("Status: %s (exit code %s)", status, exit_code)
