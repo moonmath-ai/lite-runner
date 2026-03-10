@@ -253,6 +253,11 @@ flake8-comprehensions.allow-dict-calls-with-keyword-arguments = true
   "T20",      # flake8-print
   "INP001",   # implicit-namespace-package
 ]
+"examples/**.py" = [
+  "T20",      # flake8-print
+  "INP001",   # implicit-namespace-package
+  "ERA001",   # eradicate/commented-out-code
+]
 "!tests/test_*.py" = [
   "PT",       # flake8-pytest-style
 ]
