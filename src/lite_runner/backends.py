@@ -125,7 +125,7 @@ class WandbBackend:
 
     def update_config(self, updates: dict[str, object]) -> None:
         """Merge updates into the W&B run config."""
-        self.run.config.update(updates)
+        self.run.config.update(updates)  # type: ignore[no-untyped-call]
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         """Log a file to W&B as artifact, video, image, or text."""

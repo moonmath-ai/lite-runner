@@ -17,7 +17,9 @@ import time
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Self, TextIO
+from typing import IO, TYPE_CHECKING, TextIO
+
+from typing_extensions import Self
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -442,7 +444,7 @@ class Runner:
             config[f"param/{k}"] = "<unset>" if v is UNSET else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
-        timestamp = datetime.datetime.now(tz=datetime.UTC)
+        timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         config["meta/hostname"] = os.uname().nodename
         config["meta/datetime"] = timestamp.isoformat()
         config["meta/command"] = shlex.join(r.command)
@@ -502,7 +504,7 @@ class Runner:
             ("code diff", prepare_code_diff),
         ]:
             try:
-                pre_run_files.extend(fn(output_dir, dry_run=flags.dry_run))
+                pre_run_files.extend(fn(output_dir, dry_run=bool(flags.dry_run)))
             except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s failed: %s", name, e)
 
@@ -515,7 +517,7 @@ class Runner:
                 r.params,
                 interpolated_params,
                 when="before",
-                dry_run=flags.dry_run,
+                dry_run=bool(flags.dry_run),
             )
         )
 
@@ -555,7 +557,7 @@ class Runner:
             stdout_text,
             r.tags,
             aborted=aborted,
-            dry_run=flags.dry_run,
+            dry_run=bool(flags.dry_run),
         )
         result = RunResult(
             output_dir=output_dir,

@@ -565,6 +565,7 @@ source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
     { name = "questionary" },
+    { name = "typing-extensions" },
     { name = "wandb" },
 ]
 
@@ -601,6 +602,7 @@ typing = [
 requires-dist = [
     { name = "gitpython" },
     { name = "questionary" },
+    { name = "typing-extensions", specifier = ">=4.0" },
     { name = "wandb" },
 ]
 

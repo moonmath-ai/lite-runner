@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
+
+from typing_extensions import override
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -52,6 +54,7 @@ _SKIP_INPUT = "-"
 class _Unset:
     """Param value skipped by user during interactive prompting."""
 
+    @override
     def __repr__(self) -> str:
         return "<unset>"
 
@@ -99,11 +102,11 @@ class Param:
 
     name: str
     type: ParamType | list[ParamType] = "str"
-    default: Any = None
+    default: object = None
     choices: list[str] | None = None
     help: str = ""
     flag: str | None = None
-    value: Any = None
+    value: object = None
     labels: list[str] | None = None
     log_when: str | None = None
     prompt: bool = True
@@ -213,7 +216,7 @@ class Param:
         answer = questionary.confirm(f"{label}:", default=bool(default)).ask()
         if answer is None:
             raise KeyboardInterrupt
-        return answer
+        return bool(answer)
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name
@@ -237,7 +240,8 @@ class Param:
 
         assert isinstance(self.type, str)  # noqa: S101
         caster = _PARAM_TYPE_MAP.get(self.type, str)
-        return caster(answer)
+        result: int | float | str = caster(answer)
+        return result
 
     def _prompt_nargs(self, default: object = None) -> list[object] | _Unset:
         nargs = self.nargs

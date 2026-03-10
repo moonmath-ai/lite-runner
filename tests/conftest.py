@@ -16,7 +16,7 @@ _FAKE_GIT_INFO = {
 }
 
 
-def _mock_wb_run(**overrides: Any) -> MagicMock:  # noqa: ANN401
+def _mock_wb_run(**overrides: object) -> MagicMock:
     defaults = {
         "summary": {},
         "name": "test-run-42",
@@ -38,7 +38,7 @@ def _clean_argv() -> Generator[None]:
         yield
 
 
-def _make_runner(
+def _make_runner(  # type: ignore[explicit-any]
     params: list[Param] | None = None,
     command: str = "echo hello",
     **kwargs: Any,  # noqa: ANN401

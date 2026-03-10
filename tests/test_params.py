@@ -155,12 +155,12 @@ def test_param_log_when_multi_value_non_first_path_output() -> None:
 
 def test_unknown_param_type_raises() -> None:
     with pytest.raises(ValueError, match="Unknown param type"):
-        Param("x", type="badtype")
+        Param("x", type="badtype")  # type: ignore[arg-type]
 
 
 def test_unknown_param_type_in_list_raises() -> None:
     with pytest.raises(ValueError, match="Unknown param type"):
-        Param("x", type=["float", "badtype"])
+        Param("x", type=["float", "badtype"])  # type: ignore[list-item]
 
 
 def test_bool_in_type_list_raises() -> None:

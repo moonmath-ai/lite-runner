@@ -48,6 +48,7 @@ dependencies = [
     "wandb",
     "questionary",
     "gitpython",
+    "typing_extensions >=4.0",
 ]
 
 
