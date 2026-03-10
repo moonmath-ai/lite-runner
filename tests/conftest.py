@@ -39,6 +39,8 @@ def _clean_argv() -> Generator[None]:
 
 
 def _make_runner(
-    params: list[Param] | None = None, command: str = "echo hello", **kwargs: Any  # noqa: ANN401
+    params: list[Param] | None = None,
+    command: str = "echo hello",
+    **kwargs: Any,  # noqa: ANN401
 ) -> Runner:
     return Runner(command=command, params=params or [], **kwargs)
