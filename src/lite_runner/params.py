@@ -182,7 +182,7 @@ class Param:
                     f"{self.help or ''} ({' '.join(self.labels)})"
                 ).strip()
         else:
-            assert isinstance(self.type, str)
+            assert isinstance(self.type, str)  # noqa: S101
             kwargs["type"] = _PARAM_TYPE_MAP[self.type]
         if self.choices:
             kwargs["choices"] = self.choices
@@ -235,13 +235,13 @@ class Param:
         if answer in (_SKIP_INPUT, ""):
             return UNSET
 
-        assert isinstance(self.type, str)
+        assert isinstance(self.type, str)  # noqa: S101
         caster = _PARAM_TYPE_MAP.get(self.type, str)
         return caster(answer)
 
     def _prompt_nargs(self, default: object = None) -> list[object] | _Unset:
         nargs = self.nargs
-        assert nargs is not None, "_prompt_nargs called without nargs"
+        assert nargs is not None, "_prompt_nargs called without nargs"  # noqa: S101
         labels = self.labels or [f"{self.name}[{i}]" for i in range(nargs)]
         element_types = self.type_list
         defaults = default if isinstance(default, list) else [None] * nargs

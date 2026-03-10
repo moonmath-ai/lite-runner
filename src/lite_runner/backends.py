@@ -120,7 +120,7 @@ class WandbBackend:
     def run_url(self) -> str:
         """Return the W&B run URL."""
         url = self.run.url
-        assert url is not None
+        assert url is not None  # noqa: S101
         return url
 
     def update_config(self, updates: dict[str, object]) -> None:
@@ -187,7 +187,7 @@ class JsonBackend:
     def run_name(self) -> str:
         """Return the run name."""
         name = self.metadata["name"]
-        assert isinstance(name, str)
+        assert isinstance(name, str)  # noqa: S101
         return name
 
     def update_config(self, updates: dict[str, object]) -> None:
@@ -214,7 +214,7 @@ class JsonBackend:
     def finish(self, exit_code: int) -> None:
         """Write run_info.json to the output directory."""
         output_dir_val = self.config["meta/output_dir"]
-        assert isinstance(output_dir_val, str)
+        assert isinstance(output_dir_val, str)  # noqa: S101
         output_dir = Path(output_dir_val)
         run_info = {
             "metadata": self.metadata,

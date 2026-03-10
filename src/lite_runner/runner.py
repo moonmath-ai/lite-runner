@@ -216,7 +216,7 @@ class Runner:
                 if param.type == "bool":
                     # differentiate explicit False from implicit False
                     param_kwargs["default"] = None
-                assert param.flag is not None
+                assert param.flag is not None  # noqa: S101
                 parser.add_argument(param.flag, **param_kwargs)  # type: ignore[arg-type]
 
         return parser
@@ -430,7 +430,7 @@ class Runner:
         # Git info and project
         git_info = _collect_git_info()
         repo_name = git_info.get("repo")
-        assert repo_name is None or isinstance(repo_name, str)
+        assert repo_name is None or isinstance(repo_name, str)  # noqa: S101
         project = flags.project or r.project or repo_name
         if project is None:
             msg = "Cannot determine project name: set project= or run from a git repo"
@@ -673,7 +673,7 @@ class Runner:
 
     def build_command(self, param_values: dict[str, object]) -> list[str]:
         """Build the subprocess command as a plain token list."""
-        assert isinstance(self.command, list)
+        assert isinstance(self.command, list)  # noqa: S101
         cmd: list[str] = self.command[:]
         for p in self.params:
             val = param_values.get(p.name)
