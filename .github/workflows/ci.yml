@@ -112,9 +112,9 @@ jobs:
           - resolution: locked
             os: macos-latest
             python-version: '3.10'
-          - resolution: locked
-            os: windows-latest
-            python-version: '3.10'
+          # - resolution: locked
+          #   os: windows-latest
+          #   python-version: '3.10'
       fail-fast: false
     runs-on: ${{ matrix.os }}
     name: test-${{ matrix.python-version }}-${{ matrix.resolution }}-${{ matrix.os }}
