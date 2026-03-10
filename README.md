@@ -1,10 +1,7 @@
 # LiteRunner
 
 [![Tests][tests-badge]][tests-link]
-[![uv][uv-badge]][uv-link]
-[![Ruff][ruff-badge]][ruff-link]
 [![codecov][codecov-badge]][codecov-link]
-\
 [![Made Using tsvikas/python-template][template-badge]][template-link]
 [![GitHub Discussion][github-discussions-badge]][github-discussions-link]
 [![PRs Welcome][prs-welcome-badge]][prs-welcome-link]
