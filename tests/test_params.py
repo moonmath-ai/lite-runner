@@ -25,7 +25,7 @@ from lite_runner.params import _log_as_from_type
         ("int", None),
     ],
 )
-def test_log_as_from_type(type_str, expected):
+def test_log_as_from_type(type_str: str, expected: str | None) -> None:
     assert _log_as_from_type(type_str) == expected
 
 
@@ -34,52 +34,52 @@ def test_log_as_from_type(type_str, expected):
 # ---------------------------------------------------------------------------
 
 
-def test_param_dest_normalizes_hyphens():
+def test_param_dest_normalizes_hyphens() -> None:
     p = Param("my-param")
     assert p.dest == "my_param"
 
 
-def test_param_dest_preserves_underscores():
+def test_param_dest_preserves_underscores() -> None:
     p = Param("my_param")
     assert p.dest == "my_param"
 
 
-def test_param_flag_from_hyphens():
+def test_param_flag_from_hyphens() -> None:
     p = Param("my-param")
     assert p.flag == "--my-param"
 
 
-def test_param_flag_from_underscores():
+def test_param_flag_from_underscores() -> None:
     p = Param("my_param")
     assert p.flag == "--my-param"
 
 
-def test_param_flag_explicit_override():
+def test_param_flag_explicit_override() -> None:
     p = Param("x", flag="-x")
     assert p.flag == "-x"
 
 
-def test_param_is_fixed_with_value():
+def test_param_is_fixed_with_value() -> None:
     p = Param("x", value="fixed")
     assert p.is_fixed
 
 
-def test_param_is_fixed_without_value():
+def test_param_is_fixed_without_value() -> None:
     p = Param("x")
     assert not p.is_fixed
 
 
-def test_param_log_when_inferred_after():
+def test_param_log_when_inferred_after() -> None:
     p = Param("out", type="path-video", value="$output/vid.mp4")
     assert p.log_when == "after"
 
 
-def test_param_log_when_inferred_before():
+def test_param_log_when_inferred_before() -> None:
     p = Param("input", type="path-video")
     assert p.log_when == "before"
 
 
-def test_param_log_when_explicit_overrides():
+def test_param_log_when_explicit_overrides() -> None:
     p = Param(
         "input",
         type="path-video",
@@ -89,7 +89,7 @@ def test_param_log_when_explicit_overrides():
     assert p.log_when == "before"
 
 
-def test_param_log_when_list_value():
+def test_param_log_when_list_value() -> None:
     p = Param(
         "img",
         type=["path-image", "float", "float"],
@@ -99,18 +99,18 @@ def test_param_log_when_list_value():
     assert p.log_when == "after"
 
 
-def test_param_log_when_none_without_upload_type():
+def test_param_log_when_none_without_upload_type() -> None:
     p = Param("seed", type="int", default=42)
     assert p.log_when is None
 
 
-def test_param_log_when_none_plain_path():
+def test_param_log_when_none_plain_path() -> None:
     """Path (no sub-type) has no upload intent, so log_when stays None."""
     p = Param("config", type="path")
     assert p.log_when is None
 
 
-def test_param_type_list_infers_nargs():
+def test_param_type_list_infers_nargs() -> None:
     p = Param(
         "image",
         type=["path-image", "float", "float"],
@@ -123,27 +123,27 @@ def test_param_type_list_infers_nargs():
     assert kwargs["type"] is str
 
 
-def test_param_nargs_none_without_type_list():
+def test_param_nargs_none_without_type_list() -> None:
     p = Param("prompt")
     assert p.nargs is None
 
 
-def test_param_type_list_single():
+def test_param_type_list_single() -> None:
     p = Param("seed", type="int")
     assert p.type_list == ["int"]
 
 
-def test_param_type_list_multi():
+def test_param_type_list_multi() -> None:
     p = Param("x", type=["float", "float"])
     assert p.type_list == ["float", "float"]
 
 
-def test_param_log_when_multi_value_non_first_path():
+def test_param_log_when_multi_value_non_first_path() -> None:
     p = Param("x", type=["float", "path-image"], labels=["val", "img"])
     assert p.log_when == "before"
 
 
-def test_param_log_when_multi_value_non_first_path_output():
+def test_param_log_when_multi_value_non_first_path_output() -> None:
     p = Param(
         "x",
         type=["float", "path-image"],
@@ -153,27 +153,27 @@ def test_param_log_when_multi_value_non_first_path_output():
     assert p.log_when == "after"
 
 
-def test_unknown_param_type_raises():
+def test_unknown_param_type_raises() -> None:
     with pytest.raises(ValueError, match="Unknown param type"):
         Param("x", type="badtype")
 
 
-def test_unknown_param_type_in_list_raises():
+def test_unknown_param_type_in_list_raises() -> None:
     with pytest.raises(ValueError, match="Unknown param type"):
         Param("x", type=["float", "badtype"])
 
 
-def test_bool_in_type_list_raises():
+def test_bool_in_type_list_raises() -> None:
     with pytest.raises(ValueError, match=r"bool.*cannot.*multi-value"):
         Param("x", type=["bool", "float"])
 
 
-def test_no_prompt_requires_default():
+def test_no_prompt_requires_default() -> None:
     with pytest.raises(ValueError, match="requires a default"):
         Param("x", prompt=False)
 
 
-def test_no_prompt_with_default_ok():
+def test_no_prompt_with_default_ok() -> None:
     p = Param("x", prompt=False, default="val")
     assert p.prompt is False
 
@@ -183,7 +183,7 @@ def test_no_prompt_with_default_ok():
 # ---------------------------------------------------------------------------
 
 
-def test_ask_user_prompts_bool_param():
+def test_ask_user_prompts_bool_param() -> None:
     """Bool params are prompted via questionary.confirm()."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -194,7 +194,7 @@ def test_ask_user_prompts_bool_param():
     assert r.param_sources["turbo"] == "prompt"
 
 
-def test_ask_user_bool_false():
+def test_ask_user_bool_false() -> None:
     """Bool param answered False is logged."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -203,7 +203,7 @@ def test_ask_user_bool_false():
     assert r.param_values["turbo"] is False
 
 
-def test_ask_user_bool_skips_cli_provided():
+def test_ask_user_bool_skips_cli_provided() -> None:
     """Bool param set via CLI is not re-prompted."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.parse_cli(["--turbo"])
@@ -213,7 +213,7 @@ def test_ask_user_bool_skips_cli_provided():
     assert r.param_values["turbo"] is True
 
 
-def test_ask_user_bool_cancel_raises():
+def test_ask_user_bool_cancel_raises() -> None:
     """Cancelling a bool prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -222,7 +222,7 @@ def test_ask_user_bool_cancel_raises():
             runner.ask_user()
 
 
-def test_bool_param_logged_in_config():
+def test_bool_param_logged_in_config() -> None:
     """Bool param value appears in run config (via JsonBackend)."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.parse_cli(["--turbo"])
@@ -235,7 +235,7 @@ def test_bool_param_logged_in_config():
 # ---------------------------------------------------------------------------
 
 
-def test_skip_single_param_returns_unset():
+def test_skip_single_param_returns_unset() -> None:
     """Typing '-' at a text prompt returns UNSET."""
     runner = _make_runner(params=[Param("prompt")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -244,7 +244,7 @@ def test_skip_single_param_returns_unset():
     assert r.param_values["prompt"] is UNSET
 
 
-def test_skip_select_param_returns_unset():
+def test_skip_select_param_returns_unset() -> None:
     """Typing '-' at a select prompt returns UNSET."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -253,7 +253,7 @@ def test_skip_select_param_returns_unset():
     assert r.param_values["mode"] is UNSET
 
 
-def test_skip_select_includes_dash_in_choices():
+def test_skip_select_includes_dash_in_choices() -> None:
     """Select prompt includes '-' as the first choice."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -263,7 +263,7 @@ def test_skip_select_includes_dash_in_choices():
     assert call_args[1]["choices"] == ["-", "fast", "slow"]
 
 
-def test_skip_nargs_returns_unset():
+def test_skip_nargs_returns_unset() -> None:
     """Typing '-' for any nargs element skips the whole param."""
     runner = _make_runner(
         params=[

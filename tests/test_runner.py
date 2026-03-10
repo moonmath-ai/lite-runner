@@ -3,6 +3,7 @@
 import json
 import re
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import git
@@ -17,7 +18,7 @@ from lite_runner.runner import _collect_git_info, _interpolate_output
 # ---------------------------------------------------------------------------
 
 
-def test_parse_basic_args():
+def test_parse_basic_args() -> None:
     runner = _make_runner(params=[Param("prompt"), Param("seed", type="int")])
     r = runner.parse_cli(["--prompt", "a cat", "--seed", "42"])
     assert r.param_values["prompt"] == "a cat"
@@ -25,19 +26,19 @@ def test_parse_basic_args():
     assert r.cli_parsed
 
 
-def test_parse_bool_flag():
+def test_parse_bool_flag() -> None:
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.parse_cli(["--turbo"])
     assert r.param_values["turbo"] is True
 
 
-def test_parse_bool_flag_absent():
+def test_parse_bool_flag_absent() -> None:
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.parse_cli([])
     assert "turbo" not in r.param_values
 
 
-def test_fixed_params_not_in_argparse():
+def test_fixed_params_not_in_argparse() -> None:
     runner = _make_runner(
         params=[
             Param("prompt"),
@@ -49,13 +50,13 @@ def test_fixed_params_not_in_argparse():
         parser.parse_args(["--output", "x"])
 
 
-def test_parse_choices():
+def test_parse_choices() -> None:
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
     r = runner.parse_cli(["--mode", "fast"])
     assert r.param_values["mode"] == "fast"
 
 
-def test_parse_type_list():
+def test_parse_type_list() -> None:
     runner = _make_runner(
         params=[
             Param(
@@ -69,26 +70,26 @@ def test_parse_type_list():
     assert r.param_values["image"] == ["photo.jpg", 0.0, 0.8]
 
 
-def test_parse_types_with_spaces_in_path():
+def test_parse_types_with_spaces_in_path() -> None:
     runner = _make_runner(params=[Param("config", type="path")])
     r = runner.parse_cli(["--config", "/path/with spaces/config.yaml"])
     assert r.param_values["config"] == "/path/with spaces/config.yaml"
 
 
-def test_builtin_flags():
+def test_builtin_flags() -> None:
     runner = _make_runner()
     r = runner.parse_cli(["--dry-run", "--no-interactive"])
     assert r.run_flags.dry_run is True
     assert r.run_flags.no_interactive is True
 
 
-def test_project_override():
+def test_project_override() -> None:
     runner = _make_runner()
     r = runner.parse_cli(["--project", "my-project"])
     assert r.run_flags.project == "my-project"
 
 
-def test_param_name_conflicts_with_builtin_flag():
+def test_param_name_conflicts_with_builtin_flag() -> None:
     with pytest.raises(ValueError, match="conflicts with built-in flag"):
         Runner(command="echo", params=[Param("dry_run")])
 
@@ -98,51 +99,51 @@ def test_param_name_conflicts_with_builtin_flag():
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_defaults_applies_defaults():
+def test_resolve_defaults_applies_defaults() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.resolve_defaults()
     assert r.param_values["seed"] == 42
     assert r.param_sources["seed"] == "default"
 
 
-def test_resolve_defaults_callable():
+def test_resolve_defaults_callable() -> None:
     runner = _make_runner(params=[Param("ts", default=lambda: "now")])
     r = runner.resolve_defaults()
     assert r.param_values["ts"] == "now"
 
 
-def test_resolve_defaults_fixed():
+def test_resolve_defaults_fixed() -> None:
     runner = _make_runner(params=[Param("out", value="/fixed")])
     r = runner.resolve_defaults()
     assert r.param_values["out"] == "/fixed"
     assert r.param_sources["out"] == "fixed"
 
 
-def test_resolve_defaults_fixed_callable():
+def test_resolve_defaults_fixed_callable() -> None:
     runner = _make_runner(params=[Param("ts", value=lambda: "now")])
     r = runner.resolve_defaults()
     assert r.param_values["ts"] == "now"
 
 
-def test_resolve_defaults_bool_false():
+def test_resolve_defaults_bool_false() -> None:
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.resolve_defaults()
     assert r.param_values["turbo"] is False
 
 
-def test_resolve_defaults_does_not_overwrite_cli():
+def test_resolve_defaults_does_not_overwrite_cli() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.parse_cli(["--seed", "99"]).resolve_defaults()
     assert r.param_values["seed"] == 99
 
 
-def test_resolve_defaults_does_not_overwrite_override():
+def test_resolve_defaults_does_not_overwrite_override() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=77).resolve_defaults()
     assert r.param_values["seed"] == 77
 
 
-def test_resolve_defaults_casts_type_list():
+def test_resolve_defaults_casts_type_list() -> None:
     runner = _make_runner(
         params=[Param("x", type=["float", "float"])],
     )
@@ -150,7 +151,7 @@ def test_resolve_defaults_casts_type_list():
     assert r.param_values["x"] == [1.0, 2.0]
 
 
-def test_resolve_defaults_casts_default_list():
+def test_resolve_defaults_casts_default_list() -> None:
     runner = _make_runner(
         params=[
             Param(
@@ -170,7 +171,7 @@ def test_resolve_defaults_casts_default_list():
 # ---------------------------------------------------------------------------
 
 
-def test_override_returns_new_runner():
+def test_override_returns_new_runner() -> None:
     runner = _make_runner(
         params=[Param("seed", type="int", default=42)],
     )
@@ -180,19 +181,19 @@ def test_override_returns_new_runner():
     assert "seed" not in runner.param_values
 
 
-def test_override_kwarg_underscore_to_hyphen():
+def test_override_kwarg_underscore_to_hyphen() -> None:
     runner = _make_runner(params=[Param("my-param")])
     r = runner.override(my_param="val")
     assert r.param_values["my-param"] == "val"
 
 
-def test_override_unknown_param_raises():
+def test_override_unknown_param_raises() -> None:
     runner = _make_runner(params=[Param("seed", type="int")])
     with pytest.raises(ValueError, match="Unknown param"):
         runner.override(bad_param=99)
 
 
-def test_override_chained():
+def test_override_chained() -> None:
     runner = _make_runner(
         params=[Param("seed", type="int"), Param("prompt")],
     )
@@ -201,7 +202,7 @@ def test_override_chained():
     assert r.param_values["prompt"] == "a cat"
 
 
-def test_override_preserves_cli_args():
+def test_override_preserves_cli_args() -> None:
     runner = _make_runner(
         params=[Param("seed", type="int"), Param("prompt")],
     )
@@ -211,13 +212,13 @@ def test_override_preserves_cli_args():
     assert r2.param_values["prompt"] == "a cat"
 
 
-def test_override_fixed_params_included():
+def test_override_fixed_params_included() -> None:
     runner = _make_runner(params=[Param("out", value="/fixed")])
     r = runner.resolve_defaults()
     assert r.param_values["out"] == "/fixed"
 
 
-def test_override_run_skips_prompting(tmp_path):
+def test_override_run_skips_prompting(tmp_path: Path) -> None:
     runner = Runner(
         command=f"{sys.executable} -c \"print('hello')\"",
         params=[
@@ -242,28 +243,28 @@ def test_override_run_skips_prompting(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_with_metadata_project():
+def test_with_metadata_project() -> None:
     runner = _make_runner()
     r = runner.with_metadata(project="new-proj")
     assert r.project == "new-proj"
     assert runner.project is None
 
 
-def test_with_metadata_group():
+def test_with_metadata_group() -> None:
     runner = _make_runner()
     r = runner.with_metadata(run_group="sweep-1")
     assert r.run_group == "sweep-1"
     assert runner.run_group is None
 
 
-def test_with_metadata_tags():
+def test_with_metadata_tags() -> None:
     runner = _make_runner()
     r = runner.with_metadata(tags=["v1", "test"])
     assert r.tags == ["v1", "test"]
     assert runner.tags == []
 
 
-def test_with_metadata_partial():
+def test_with_metadata_partial() -> None:
     runner = _make_runner()
     r = runner.with_metadata(project="proj")
     assert r.project == "proj"
@@ -275,7 +276,7 @@ def test_with_metadata_partial():
 # ---------------------------------------------------------------------------
 
 
-def test_ask_user_fills_from_questionary():
+def test_ask_user_fills_from_questionary() -> None:
     runner = _make_runner(params=[Param("prompt")])
     with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
@@ -285,20 +286,20 @@ def test_ask_user_fills_from_questionary():
     assert r.filled
 
 
-def test_ask_user_non_interactive_raises_on_missing():
+def test_ask_user_non_interactive_raises_on_missing() -> None:
     runner = _make_runner(params=[Param("prompt")])
     with pytest.raises(ValueError, match="Missing required params"):
         runner.ask_user(no_interactive=True)
 
 
-def test_ask_user_non_interactive_ok_with_defaults():
+def test_ask_user_non_interactive_ok_with_defaults() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.ask_user(no_interactive=True)
     assert r.param_values["seed"] == 42
     assert r.filled
 
 
-def test_ask_user_select_for_choices():
+def test_ask_user_select_for_choices() -> None:
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
     with patch("lite_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
@@ -306,7 +307,7 @@ def test_ask_user_select_for_choices():
     assert r.param_values["mode"] == "fast"
 
 
-def test_ask_user_type_list_prompts_each_part():
+def test_ask_user_type_list_prompts_each_part() -> None:
     runner = _make_runner(
         params=[
             Param(
@@ -325,7 +326,7 @@ def test_ask_user_type_list_prompts_each_part():
     assert r.param_values["image"] == ["photo.jpg", 0.0, 0.8]
 
 
-def test_ask_user_path_image_uses_path_widget():
+def test_ask_user_path_image_uses_path_widget() -> None:
     """path-image type should use questionary.path() widget."""
     runner = _make_runner(params=[Param("img", type="path-image")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -335,7 +336,7 @@ def test_ask_user_path_image_uses_path_widget():
     assert r.param_values["img"] == "/fake/photo.jpg"
 
 
-def test_ask_user_cancel_raises():
+def test_ask_user_cancel_raises() -> None:
     """Cancelling a text prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("prompt")])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -344,7 +345,7 @@ def test_ask_user_cancel_raises():
             runner.ask_user()
 
 
-def test_ask_user_prompts_default_param():
+def test_ask_user_prompts_default_param() -> None:
     """Params with defaults are prompted with default pre-filled."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     with patch("lite_runner.params.questionary") as mock_q:
@@ -354,7 +355,7 @@ def test_ask_user_prompts_default_param():
     assert r.param_values["seed"] == 99
 
 
-def test_ask_user_skips_cli_provided_param():
+def test_ask_user_skips_cli_provided_param() -> None:
     """Params explicitly provided on CLI are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.parse_cli(["--seed", "99"])
@@ -364,7 +365,7 @@ def test_ask_user_skips_cli_provided_param():
     assert r.param_values["seed"] == 99
 
 
-def test_ask_user_skips_overridden_param():
+def test_ask_user_skips_overridden_param() -> None:
     """Params set via overrides are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=77)
@@ -374,7 +375,7 @@ def test_ask_user_skips_overridden_param():
     assert r.param_values["seed"] == 77
 
 
-def test_ask_user_skips_no_prompt_param():
+def test_ask_user_skips_no_prompt_param() -> None:
     """Params with prompt=False are not prompted; they use their default."""
     runner = _make_runner(
         params=[
@@ -391,7 +392,7 @@ def test_ask_user_skips_no_prompt_param():
     assert r.param_values["threshold"] == -3.0
 
 
-def test_no_prompt_param_accepts_cli_flag():
+def test_no_prompt_param_accepts_cli_flag() -> None:
     """Params with prompt=False can still be overridden from CLI."""
     runner = _make_runner(
         [Param("threshold", type="float", default=-3.0, prompt=False)]
@@ -406,7 +407,7 @@ def test_no_prompt_param_accepts_cli_flag():
 # ---------------------------------------------------------------------------
 
 
-def test_build_command_skips_unset():
+def test_build_command_skips_unset() -> None:
     """UNSET params are omitted from the command."""
     runner = _make_runner(
         params=[Param("prompt"), Param("mode", choices=["fast", "slow"])],
@@ -415,7 +416,7 @@ def test_build_command_skips_unset():
     assert cmd == ["echo", "hello", "--prompt", "a cat"]
 
 
-def test_build_command_skips_unset_after_copy():
+def test_build_command_skips_unset_after_copy() -> None:
     """UNSET survives Runner.copy() (deepcopy) and is still omitted."""
     runner = _make_runner(
         params=[Param("prompt"), Param("mode", choices=["fast", "slow"])],
@@ -427,7 +428,7 @@ def test_build_command_skips_unset_after_copy():
     assert "<unset>" not in " ".join(cmd)
 
 
-def test_config_logs_unset_as_marker():
+def test_config_logs_unset_as_marker() -> None:
     """Skipped params appear as '<unset>' in the config dict."""
     resolved = {"prompt": "test", "mode": UNSET}
     config: dict[str, object] = {}
@@ -442,35 +443,35 @@ def test_config_logs_unset_as_marker():
 # ---------------------------------------------------------------------------
 
 
-def test_interpolate_preserves_unset(tmp_path):
+def test_interpolate_preserves_unset(tmp_path: Path) -> None:
     """UNSET values pass through interpolation unchanged."""
     result = _interpolate_output({"out": UNSET}, tmp_path)
     assert result["out"] is UNSET
 
 
-def test_interpolate_preserves_bool(tmp_path):
+def test_interpolate_preserves_bool(tmp_path: Path) -> None:
     """Bool values are not stringified by interpolation."""
     result = _interpolate_output({"on": True, "off": False}, tmp_path)
     assert result["on"] is True
     assert result["off"] is False
 
 
-def test_interpolate_replaces_output_in_string(tmp_path):
+def test_interpolate_replaces_output_in_string(tmp_path: Path) -> None:
     result = _interpolate_output({"out": "$output/video.mp4"}, tmp_path)
     assert result["out"] == f"{tmp_path}/video.mp4"
 
 
-def test_interpolate_replaces_output_in_list(tmp_path):
+def test_interpolate_replaces_output_in_list(tmp_path: Path) -> None:
     result = _interpolate_output({"img": ["$output/img.jpg", 0, 0.8]}, tmp_path)
     assert result["img"] == [f"{tmp_path}/img.jpg", 0, 0.8]
 
 
-def test_interpolate_non_output_unchanged(tmp_path):
+def test_interpolate_non_output_unchanged(tmp_path: Path) -> None:
     result = _interpolate_output({"config": "/etc/config.toml"}, tmp_path)
     assert result["config"] == "/etc/config.toml"
 
 
-def test_interpolate_preserves_resolved_params(tmp_path):
+def test_interpolate_preserves_resolved_params(tmp_path: Path) -> None:
     result = _interpolate_output(
         {"out": "$output/video.mp4", "prompt": "a cat", "seed": 42}, tmp_path
     )
@@ -484,7 +485,7 @@ def test_interpolate_preserves_resolved_params(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_build_basic_command():
+def test_build_basic_command() -> None:
     runner = Runner(
         command="python generate.py",
         params=[
@@ -503,19 +504,19 @@ def test_build_basic_command():
     ]
 
 
-def test_build_bool_flag():
+def test_build_bool_flag() -> None:
     runner = _make_runner(params=[Param("turbo", type="bool")])
     cmd = runner.build_command({"turbo": True})
     assert cmd == ["echo", "hello", "--turbo"]
 
 
-def test_build_bool_flag_false_omitted():
+def test_build_bool_flag_false_omitted() -> None:
     runner = _make_runner(params=[Param("turbo", type="bool")])
     cmd = runner.build_command({"turbo": False})
     assert cmd == ["echo", "hello"]
 
 
-def test_build_multi_value_flag():
+def test_build_multi_value_flag() -> None:
     runner = _make_runner(
         params=[
             Param(
@@ -529,13 +530,13 @@ def test_build_multi_value_flag():
     assert cmd == ["echo", "hello", "--image", "photo.jpg", "0", "0.8"]
 
 
-def test_build_custom_flag():
+def test_build_custom_flag() -> None:
     runner = _make_runner(params=[Param("x", flag="-x")])
     cmd = runner.build_command({"x": "val"})
     assert cmd == ["echo", "hello", "-x", "val"]
 
 
-def test_build_command_as_list():
+def test_build_command_as_list() -> None:
     runner = Runner(
         command=["python", "-u", "gen.py"],
         params=[Param("seed", type="int")],
@@ -544,13 +545,13 @@ def test_build_command_as_list():
     assert cmd == ["python", "-u", "gen.py", "--seed", "42"]
 
 
-def test_build_command_string_with_quotes():
+def test_build_command_string_with_quotes() -> None:
     runner = Runner(command='echo "hello world"', params=[])
     cmd = runner.build_command({})
     assert cmd == ["echo", "hello world"]
 
 
-def test_build_type_list_from_cli():
+def test_build_type_list_from_cli() -> None:
     runner = _make_runner(
         params=[
             Param(
@@ -570,7 +571,7 @@ def test_build_type_list_from_cli():
 # ---------------------------------------------------------------------------
 
 
-def test_execute_captures_stdout_and_stderr(tmp_path):
+def test_execute_captures_stdout_and_stderr(tmp_path: Path) -> None:
     runner = Runner(command="echo")
     cmd = [
         sys.executable,
@@ -590,7 +591,7 @@ def test_execute_captures_stdout_and_stderr(tmp_path):
     assert "[stderr] err" in run_log
 
 
-def test_execute_nonzero_exit_code(tmp_path):
+def test_execute_nonzero_exit_code(tmp_path: Path) -> None:
     runner = Runner(command="echo")
     exit_code, _, _, _ = runner.execute(
         [sys.executable, "-c", "import sys; sys.exit(42)"], tmp_path
@@ -598,7 +599,7 @@ def test_execute_nonzero_exit_code(tmp_path):
     assert exit_code == 42
 
 
-def test_execute_env_vars_passed(tmp_path):
+def test_execute_env_vars_passed(tmp_path: Path) -> None:
     runner = Runner(command="echo", env={"MY_TEST_VAR": "hello123"})
     cmd = [sys.executable, "-c", "import os; print(os.environ['MY_TEST_VAR'])"]
     exit_code, _, stdout_text, _ = runner.execute(cmd, tmp_path)
@@ -606,7 +607,7 @@ def test_execute_env_vars_passed(tmp_path):
     assert "hello123" in stdout_text
 
 
-def test_execute_env_none_removes_var(tmp_path):
+def test_execute_env_none_removes_var(tmp_path: Path) -> None:
     runner = Runner(command="echo", env={"FOO": "bar", "PATH": None})
     cmd = [
         sys.executable,
@@ -626,7 +627,7 @@ def test_execute_env_none_removes_var(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_run_kwargs_override_defaults():
+def test_run_kwargs_override_defaults() -> None:
     """run(dry_run=True) works without CLI flags."""
     runner = Runner(
         command="python gen.py",
@@ -637,7 +638,7 @@ def test_run_kwargs_override_defaults():
         runner.run(dry_run=True, no_interactive=True)
 
 
-def test_run_kwargs_warn_on_contradiction(caplog):
+def test_run_kwargs_warn_on_contradiction(caplog: pytest.LogCaptureFixture) -> None:
     """run() warns when kwargs contradict explicit CLI flags."""
     runner = _make_runner()
     r = runner.parse_cli(["--no-interactive"])
@@ -647,7 +648,7 @@ def test_run_kwargs_warn_on_contradiction(caplog):
     assert "no_interactive" in caplog.text
 
 
-def test_run_kwargs_no_warn_on_default():
+def test_run_kwargs_no_warn_on_default() -> None:
     """No warning when kwarg matches CLI default (not explicitly passed)."""
     runner = _make_runner()
     r = runner.parse_cli([])
@@ -660,13 +661,13 @@ def test_run_kwargs_no_warn_on_default():
 # ---------------------------------------------------------------------------
 
 
-def test_check_disk_space_passes_when_enough():
+def test_check_disk_space_passes_when_enough() -> None:
     runner = Runner(command="echo", params=[])
     # Should not raise — there's definitely more than 0.001 GiB free
     runner.check_disk_space(0.001)
 
 
-def test_check_disk_space_raises_when_not_enough():
+def test_check_disk_space_raises_when_not_enough() -> None:
     runner = Runner(command="echo", params=[])
     with pytest.raises(OSError, match="Not enough free space"):
         runner.check_disk_space(999_999)
@@ -677,7 +678,7 @@ def test_check_disk_space_raises_when_not_enough():
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_prints_command_no_wandb(caplog):
+def test_dry_run_prints_command_no_wandb(caplog: pytest.LogCaptureFixture) -> None:
     runner = Runner(
         command="python gen.py",
         params=[
@@ -701,7 +702,7 @@ def test_dry_run_prints_command_no_wandb(caplog):
     assert "Tags: ['v1']" in out
 
 
-def test_no_project_raises_valueerror():
+def test_no_project_raises_valueerror() -> None:
     """Runner with no wandb_project and no git repo raises ValueError."""
     runner = Runner(command="echo", params=[])
     with (
@@ -716,7 +717,7 @@ def test_no_project_raises_valueerror():
 # ---------------------------------------------------------------------------
 
 
-def test_full_run_with_mocked_wandb(tmp_path):
+def test_full_run_with_mocked_wandb(tmp_path: Path) -> None:
     mock_wb = MagicMock()
     wb_run = _mock_wb_run()
     mock_wb.init.return_value = wb_run
@@ -754,7 +755,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     wb_run.finish.assert_called_once_with(exit_code=0)
 
 
-def test_run_project_kwarg_flows_to_backend(tmp_path):
+def test_run_project_kwarg_flows_to_backend(tmp_path: Path) -> None:
     mock_wb = MagicMock()
     wb_run = _mock_wb_run()
     mock_wb.init.return_value = wb_run
@@ -776,7 +777,7 @@ def test_run_project_kwarg_flows_to_backend(tmp_path):
     assert mock_wb.init.call_args[1]["project"] == "custom-proj"
 
 
-def test_full_run_explicit_group(tmp_path):
+def test_full_run_explicit_group(tmp_path: Path) -> None:
     mock_wb = MagicMock()
     wb_run = _mock_wb_run()
     mock_wb.init.return_value = wb_run
@@ -805,7 +806,7 @@ def test_full_run_explicit_group(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_git_info_returns_expected_keys():
+def test_git_info_returns_expected_keys() -> None:
     mock_repo = MagicMock()
     mock_repo.working_dir = "/home/user/lite-runner"
     mock_repo.head.commit.hexsha = "abc123def456"
@@ -822,7 +823,7 @@ def test_git_info_returns_expected_keys():
     }
 
 
-def test_git_info_dirty_flag():
+def test_git_info_dirty_flag() -> None:
     mock_repo = MagicMock()
     mock_repo.working_dir = "/home/user/lite-runner"
     mock_repo.head.commit.hexsha = "abc123"
@@ -833,7 +834,7 @@ def test_git_info_dirty_flag():
         assert _collect_git_info()["dirty"] is True
 
 
-def test_git_info_empty_outside_repo():
+def test_git_info_empty_outside_repo() -> None:
     with patch(
         "lite_runner.runner.git.Repo",
         side_effect=git.InvalidGitRepositoryError,
@@ -846,19 +847,19 @@ def test_git_info_empty_outside_repo():
 # ---------------------------------------------------------------------------
 
 
-def test_no_wandb_flag_parsed():
+def test_no_wandb_flag_parsed() -> None:
     runner = _make_runner()
     r = runner.parse_cli(["--no-wandb"])
     assert r.run_flags.no_wandb is True
 
 
-def test_no_wandb_flag_default():
+def test_no_wandb_flag_default() -> None:
     runner = _make_runner()
     r = runner.parse_cli([])
     assert bool(r.run_flags.no_wandb) is False
 
 
-def test_full_run_no_wandb(tmp_path):
+def test_full_run_no_wandb(tmp_path: Path) -> None:
     """--no-wandb skips W&B but still runs command and writes run_info.json."""
     runner = Runner(
         command=(
@@ -915,7 +916,7 @@ def test_full_run_no_wandb(tmp_path):
     assert run_info["config"]["wandb/url"] == "(no wandb)"
 
 
-def test_full_run_with_wandb_also_writes_run_info(tmp_path):
+def test_full_run_with_wandb_also_writes_run_info(tmp_path: Path) -> None:
     """Even with W&B enabled, run_info.json is written."""
     mock_wb = MagicMock()
     wb_run = _mock_wb_run()
@@ -951,7 +952,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     assert run_info["config"]["wandb/url"] == "https://wandb.test/run"
 
 
-def test_no_wandb_failed_run(tmp_path):
+def test_no_wandb_failed_run(tmp_path: Path) -> None:
     """--no-wandb with a failing command records failure status and tags."""
     runner = Runner(
         command=f'{sys.executable} -c "import sys; sys.exit(1)"',
@@ -983,31 +984,31 @@ def test_no_wandb_failed_run(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_sources_cli():
+def test_sources_cli() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.parse_cli(["--seed", "99"])
     assert r.param_sources["seed"] == "cli"
 
 
-def test_sources_override():
+def test_sources_override() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=99)
     assert r.param_sources["seed"] == "override"
 
 
-def test_sources_default():
+def test_sources_default() -> None:
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.resolve_defaults()
     assert r.param_sources["seed"] == "default"
 
 
-def test_sources_fixed():
+def test_sources_fixed() -> None:
     runner = _make_runner(params=[Param("out", value="/fixed")])
     r = runner.resolve_defaults()
     assert r.param_sources["out"] == "fixed"
 
 
-def test_sources_prompt():
+def test_sources_prompt() -> None:
     runner = _make_runner(params=[Param("prompt")])
     with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
@@ -1015,7 +1016,7 @@ def test_sources_prompt():
     assert r.param_sources["prompt"] == "prompt"
 
 
-def test_override_does_not_overwrite_on_parse_cli():
+def test_override_does_not_overwrite_on_parse_cli() -> None:
     """parse_cli() preserves earlier override values."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=777).parse_cli(["--seed", "10"])

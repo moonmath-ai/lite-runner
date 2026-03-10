@@ -19,19 +19,19 @@ from lite_runner.backends import (
 # ---------------------------------------------------------------------------
 
 
-def test_split_glob_star():
+def test_split_glob_star() -> None:
     base, pattern = _split_glob("/fake/output/frames/*.jpg")
     assert base == Path("/fake/output/frames")
     assert pattern == "*.jpg"
 
 
-def test_split_glob_doublestar():
+def test_split_glob_doublestar() -> None:
     base, pattern = _split_glob("debug/**/*.png")
     assert base == Path("debug")
     assert pattern == "**/*.png"
 
 
-def test_split_glob_question():
+def test_split_glob_question() -> None:
     base, pattern = _split_glob("/fake/file?.txt")
     assert base == Path("/fake")
     assert pattern == "file?.txt"
@@ -42,31 +42,31 @@ def test_split_glob_question():
 # ---------------------------------------------------------------------------
 
 
-def test_metric_float():
+def test_metric_float() -> None:
     metrics = [Metric("skip_pct", pattern=r"skipped=([\d.]+)%")]
     items = collect_metrics(metrics, "some output\nskipped=32.8%\ndone")
     assert items == [("skip_pct", 32.8)]
 
 
-def test_metric_str():
+def test_metric_str() -> None:
     metrics = [Metric("status", pattern=r"final: (\w+)", type="str")]
     items = collect_metrics(metrics, "final: completed")
     assert items == [("status", "completed")]
 
 
-def test_metric_last_match_wins():
+def test_metric_last_match_wins() -> None:
     metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     items = collect_metrics(metrics, "x=1.0\nx=2.0\nx=3.0")
     assert items == [("val", 3.0)]
 
 
-def test_metric_no_match():
+def test_metric_no_match() -> None:
     metrics = [Metric("val", pattern=r"x=([\d.]+)")]
     items = collect_metrics(metrics, "no matches here")
     assert items == []
 
 
-def test_collect_metrics_multiple():
+def test_collect_metrics_multiple() -> None:
     """Multiple metrics are collected independently."""
     metrics = [
         Metric("val", pattern=r"x=([\d.]+)"),
@@ -81,7 +81,7 @@ def test_collect_metrics_multiple():
 # ---------------------------------------------------------------------------
 
 
-def test_collect_param_files_skips_unset():
+def test_collect_param_files_skips_unset() -> None:
     """collect_param_files skips params whose value is UNSET."""
     params = [Param("img", type="path-image")]
     items = collect_param_files(params, {"img": UNSET}, when="before")
@@ -93,7 +93,7 @@ def test_collect_param_files_skips_unset():
 # ---------------------------------------------------------------------------
 
 
-def test_prepare_extra_outputs_glob(tmp_path):
+def test_prepare_extra_outputs_glob(tmp_path: Path) -> None:
     """Glob pattern expands and collects each matched file."""
     (tmp_path / "frames").mkdir()
     (tmp_path / "frames" / "001.png").write_text("a")
@@ -106,7 +106,7 @@ def test_prepare_extra_outputs_glob(tmp_path):
     assert len(image_items) == 2
 
 
-def test_prepare_extra_outputs_glob_zip(tmp_path):
+def test_prepare_extra_outputs_glob_zip(tmp_path: Path) -> None:
     """Glob + log_as='zip' creates a zip archive."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
@@ -127,7 +127,7 @@ def test_prepare_extra_outputs_glob_zip(tmp_path):
     assert items[0].log_as == "artifact"
 
 
-def test_prepare_extra_outputs_dir_zip(tmp_path):
+def test_prepare_extra_outputs_dir_zip(tmp_path: Path) -> None:
     """Directory with log_as='zip' zips entire directory."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("tensor1")
@@ -148,7 +148,7 @@ def test_prepare_extra_outputs_dir_zip(tmp_path):
     assert items[0].path == zip_path
 
 
-def test_prepare_extra_outputs_glob_no_match(tmp_path, caplog):
+def test_prepare_extra_outputs_glob_no_match(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """Glob with no matches logs a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
     with caplog.at_level("WARNING", logger="lite_runner"):
@@ -157,7 +157,7 @@ def test_prepare_extra_outputs_glob_no_match(tmp_path, caplog):
     assert "matched no files" in caplog.text
 
 
-def test_prepare_extra_outputs_single_file(tmp_path):
+def test_prepare_extra_outputs_single_file(tmp_path: Path) -> None:
     """Non-glob single file still works (regression)."""
     (tmp_path / "meta.json").write_text("{}")
 
@@ -167,7 +167,7 @@ def test_prepare_extra_outputs_single_file(tmp_path):
     assert len(artifact_items) == 1
 
 
-def test_prepare_extra_outputs_duplicate_zip_raises(tmp_path):
+def test_prepare_extra_outputs_duplicate_zip_raises(tmp_path: Path) -> None:
     """Two zip outputs with same implicit label should raise."""
     (tmp_path / "debug").mkdir()
     (tmp_path / "debug" / "a.pt").write_text("x")
@@ -186,7 +186,7 @@ def test_prepare_extra_outputs_duplicate_zip_raises(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_collect_run_logs(tmp_path):
+def test_collect_run_logs(tmp_path: Path) -> None:
     """Collects existing log files from output dir."""
     (tmp_path / "run.log").write_text("combined")
     (tmp_path / "stdout.log").write_text("out")
@@ -199,7 +199,7 @@ def test_collect_run_logs(tmp_path):
     assert all(i.log_as == "text" for i in items)
 
 
-def test_collect_run_logs_empty(tmp_path):
+def test_collect_run_logs_empty(tmp_path: Path) -> None:
     """No log files → empty list."""
     items = collect_run_logs(tmp_path)
     assert items == []

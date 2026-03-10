@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 
-def main():
+def main() -> None:
     """Run a fake video generation model for testing."""
     parser = argparse.ArgumentParser(description="Fake video generation model")
     parser.add_argument("--prompt", required=True, help="Text prompt")
