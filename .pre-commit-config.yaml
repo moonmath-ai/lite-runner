@@ -163,6 +163,7 @@ repos:
           - ''
           - --ignore-missing-imports
           - --disable-error-code=import-untyped
+          - --no-namespace-packages
 
   # Jupyter Notebook files
   - repo: local
