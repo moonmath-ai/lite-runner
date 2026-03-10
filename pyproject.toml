@@ -224,11 +224,11 @@ ignore = [
   "EM10",     # flake8-errmsg/*-in-exception
   "RET504",   # flake8-return/unnecessary-assign
   # ban something useful for a possibly good reason
-  #"C901",     # mccabe/complex-structure
+  "C901",     # mccabe/complex-structure
   #"S101",     # flake8-bandit/assert
   #"FIX00",    # flake8-fixme/line-contains-*
   #"ERA001",   # eradicate/commented-out-code
-  #"PLR091",   # PyLint-Refactor/too-many-*
+  "PLR091",   # PyLint-Refactor/too-many-*
   #"TRY003",   # tryceratops/raise-vanilla-args
 ]
 # objects that should be treated equivalently to a logging.Logger object.
