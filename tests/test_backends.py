@@ -148,7 +148,9 @@ def test_prepare_extra_outputs_dir_zip(tmp_path: Path) -> None:
     assert items[0].path == zip_path
 
 
-def test_prepare_extra_outputs_glob_no_match(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_prepare_extra_outputs_glob_no_match(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Glob with no matches logs a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
     with caplog.at_level("WARNING", logger="lite_runner"):
