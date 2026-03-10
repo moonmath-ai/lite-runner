@@ -600,10 +600,10 @@ typing = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gitpython" },
-    { name = "questionary" },
+    { name = "gitpython", specifier = ">=3.1" },
+    { name = "questionary", specifier = ">=2.0" },
     { name = "typing-extensions", specifier = ">=4.0" },
-    { name = "wandb" },
+    { name = "wandb", specifier = ">=0.17" },
 ]
 
 [package.metadata.requires-dev]
