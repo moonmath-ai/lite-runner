@@ -2,6 +2,7 @@
 
 © 2026 MoonMath.ai. Some rights reserved.
 """
+
 import logging
 
 from ._version import version as _version
@@ -24,4 +25,3 @@ __all__ = [
     "Runner",
     "WandbBackend",
 ]
-

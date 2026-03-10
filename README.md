@@ -17,7 +17,6 @@ Write a small Python script per model that declares params, outputs, and metrics
 subprocess execution, stdout/stderr capture, metric extraction, file uploads to W&B,
 and code snapshots for reproducibility.
 
-
 ## Install
 
 Install the package using pip (or uv, poetry, etc.):
@@ -63,9 +62,9 @@ if __name__ == "__main__":
 Then run it:
 
 ```bash
-python run.py --prompt "a cat walking"          # interactive TUI fills missing params
+python run.py --prompt "a cat walking"           # interactive TUI fills missing params
 python run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
-python run.py --prompt "a cat" --dry-run        # print command, don't run
+python run.py --prompt "a cat" --dry-run         # print command, don't run
 ```
 
 ## What it does
@@ -73,26 +72,36 @@ python run.py --prompt "a cat" --dry-run        # print command, don't run
 Each `runner.run()` call:
 
 1. Parses CLI args (all params are optional in argparse; missing ones trigger TUI prompts)
-2. Creates an output directory at `~/lite_runs/<project>/<timestamp>_<run_name>/`
-3. Inits a W&B run and logs all params, git info, and host metadata
-4. Saves a code snapshot (git archive + dirty diff) as a W&B artifact
-5. Builds and runs the subprocess, streaming stdout/stderr to terminal and log files
-6. Extracts metrics from stdout via regex
-7. Uploads output files (videos, images, artifacts) to W&B
-8. Logs duration, exit code, and status to W&B summary
+1. Creates an output directory at `~/lite_runs/<project>/<timestamp>_<run_name>/`
+1. Inits a W&B run and logs all params, git info, and host metadata
+1. Saves a code snapshot (git archive + dirty diff) as a W&B artifact
+1. Builds and runs the subprocess, streaming stdout/stderr to terminal and log files
+1. Extracts metrics from stdout via regex
+1. Uploads output files (videos, images, artifacts) to W&B
+1. Logs duration, exit code, and status to W&B summary
 
 ## Param
 
+<!-- blacken-docs:off -->
+
 ```python
-Param("name")                                          # basic string param
-Param("seed", type="int", default=42)                  # typed with default
-Param("mode", choices=["fast", "quality"])             # select from choices
-Param("image", type="path-image")                      # file input, uploaded to W&B before run
-Param("output-path", value="$output/video.mp4",        # fixed value, $output interpolated
-      type="path-video")                               # uploaded to W&B after run
-Param("input-image", type=["path-image", "float", "float"],  # multi-value flag
-      labels=["img", "start", "strength"])                    # each part prompted separately in TUI
+Param("name")                               # basic string param
+Param("seed", type="int", default=42)       # typed with default
+Param("mode", choices=["fast", "quality"])  # select from choices
+Param("image", type="path-image")           # file input, uploaded to W&B before run
+Param(
+    "output-path",
+    value="$output/video.mp4",              # fixed value, $output interpolated
+    type="path-video",
+)                                           # uploaded to W&B after run
+Param(
+    "input-image",
+    type=["path-image", "float", "float"],  # multi-value flag
+    labels=["img", "start", "strength"],
+)                                           # each part prompted separately in TUI
 ```
+
+<!-- blacken-docs:on -->
 
 - `value=` makes a param fixed (never prompted, not in CLI)
 - `default=` can be a callable (called at prompt time to compute the default)
@@ -116,19 +125,23 @@ Output("model_metadata.json", log_as="artifact", copy_to="$output/model_metadata
 
 Supports glob patterns and directory zipping:
 
+<!-- blacken-docs:off -->
+
 ```python
-Output("debug/**/*.png", log_as="image")        # upload each matched png
-Output("debug/", log_as="image")                 # upload each file in directory
-Output("debug/", log_as="zip")                   # zip entire directory, upload as artifact
-Output("$output/frames/*.jpg", log_as="zip")     # zip glob matches into archive
+Output("debug/**/*.png", log_as="image")      # upload each matched png
+Output("debug/", log_as="image")              # upload each file in directory
+Output("debug/", log_as="zip")                # zip entire directory, upload as artifact
+Output("$output/frames/*.jpg", log_as="zip")  # zip glob matches into archive
 ```
+
+<!-- blacken-docs:on -->
 
 ## Metric
 
 Extract values from stdout:
 
 ```python
-Metric("loss", pattern=r"loss=([\d.]+)")           # float (default)
+Metric("loss", pattern=r"loss=([\d.]+)")
 Metric("status", pattern=r"status: (\w+)", type="str")
 ```
 
@@ -142,7 +155,7 @@ Loop with `override()`. Runs are grouped in W&B for easy comparison:
 runner = Runner(
     command="python gen.py",
     params=[...],
-    run_group="lr-sweep",        # groups all runs together in W&B UI
+    run_group="lr-sweep",  # groups all runs together in W&B UI
 )
 for lr in [1e-3, 1e-4, 1e-5]:
     runner.override(learning_rate=lr).run(no_interactive=True)
@@ -158,65 +171,73 @@ runner.override(seed=42).with_metadata(tags=["baseline"]).run()
 
 ## Runner options
 
+<!-- blacken-docs:off -->
+
 ```python
 Runner(
-    command="python gen.py",          # str or list[str] (list avoids shell splitting)
+    command="python gen.py",            # str or list[str] (list avoids shell splitting)
     params=[...],
     outputs=[...],
     metrics=[...],
-    tags=["experiment-1"],            # W&B run tags
+    tags=["experiment-1"],              # W&B run tags
     env={"CUDA_VISIBLE_DEVICES": "0"},  # extra env vars for subprocess
-    project="my-project",             # default: git repo name
-    run_group="my-sweep",              # W&B run group for sweeps (None = no grouping)
+    project="my-project",               # default: git repo name
+    run_group="my-sweep",               # W&B run group for sweeps (None = no grouping)
 )
 ```
+
+<!-- blacken-docs:on -->
 
 ## Pipeline API
 
 Each method returns a new `Runner` (immutable copies), so you can branch:
 
+<!-- blacken-docs:off -->
+
 ```python
-base = runner.parse_cli()                     # parse sys.argv
-r1 = base.override(seed=42)                   # override params by name
+base = runner.parse_cli()    # parse sys.argv
+r1 = base.override(seed=42)  # override params by name
 r2 = base.override(seed=99)
-r1.run()                                      # auto-resolves defaults & prompts
+r1.run()                     # auto-resolves defaults & prompts
 r2.run()
 ```
 
+<!-- blacken-docs:on -->
+
 Methods:
 
-| Method | Description |
-|--------|-------------|
-| `parse_cli(argv)` | Parse CLI args (default: `sys.argv[1:]`) |
-| `override(**kwargs)` | Set param values by name |
-| `with_metadata(project=, run_group=, tags=)` | Update W&B metadata |
-| `resolve_defaults()` | Apply defaults and fixed values |
-| `ask_user(no_interactive=)` | Prompt for missing values |
-| `run(...)` | Auto-calls any unapplied steps, then executes |
+| Method                                       | Description                                   |
+| -------------------------------------------- | --------------------------------------------- |
+| `parse_cli(argv)`                            | Parse CLI args (default: `sys.argv[1:]`)      |
+| `override(**kwargs)`                         | Set param values by name                      |
+| `with_metadata(project=, run_group=, tags=)` | Update W&B metadata                           |
+| `resolve_defaults()`                         | Apply defaults and fixed values               |
+| `ask_user(no_interactive=)`                  | Prompt for missing values                     |
+| `run(...)`                                   | Auto-calls any unapplied steps, then executes |
 
 `run()` accepts kwargs `dry_run`, `no_interactive`, `no_wandb`, `run_name` as alternatives to CLI flags.
 
 ## Built-in CLI flags
 
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Print command and exit |
+| Flag                     | Description                                   |
+| ------------------------ | --------------------------------------------- |
+| `--dry-run`              | Print command and exit                        |
 | `--min-free-space-gib N` | Minimum free disk space in GiB (default: 1.0) |
-| `--no-interactive` | Fail if required params missing |
-| `--no-wandb` | Skip W&B logging (still logs to JSON) |
-| `--run-name NAME` | Override W&B run name |
-| `--project NAME` | Override project name |
+| `--no-interactive`       | Fail if required params missing               |
+| `--no-wandb`             | Skip W&B logging (still logs to JSON)         |
+| `--run-name NAME`        | Override W&B run name                         |
+| `--project NAME`         | Override project name                         |
 
 ## What gets logged to W&B
 
-| Location | Content |
-|----------|---------|
-| `run.config["param/*"]` | All param values |
-| `run.config["git/*"]` | commit, branch, repo, dirty |
-| `run.config["meta/*"]` | hostname, datetime, command |
-| `run.summary` | exit_code, duration_seconds, status, metrics |
-| Artifacts | Log files, code snapshot, artifact-type outputs |
-| Media | Videos and images from `path-*` type params/outputs |
+| Location                | Content                                             |
+| ----------------------- | --------------------------------------------------- |
+| `run.config["param/*"]` | All param values                                    |
+| `run.config["git/*"]`   | commit, branch, repo, dirty                         |
+| `run.config["meta/*"]`  | hostname, datetime, command                         |
+| `run.summary`           | exit_code, duration_seconds, status, metrics        |
+| Artifacts               | Log files, code snapshot, artifact-type outputs     |
+| Media                   | Videos and images from `path-*` type params/outputs |
 
 ## Contributing
 
