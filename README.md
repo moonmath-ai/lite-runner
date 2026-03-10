@@ -29,7 +29,7 @@ Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declari
 
 ```python
 # /// script
-# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/lite-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/LiteRunner"]
 # ///
 ```
 
@@ -39,7 +39,7 @@ Create a `run.py` for your model:
 
 ```python
 # /// script
-# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/lite-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/LiteRunner"]
 # ///
 from lite_runner import Runner, Param, Metric
 
