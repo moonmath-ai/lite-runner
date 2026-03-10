@@ -3,7 +3,7 @@
 
 from functools import lru_cache
 
-# from huggingface_hub import snapshot_download  # noqa: F401
+# from huggingface_hub import snapshot_download
 from lite_runner import Metric, Param, Runner
 
 
