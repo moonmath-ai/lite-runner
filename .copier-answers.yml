@@ -1,0 +1,19 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.26.2
+_src_path: https://github.com/tsvikas/python-template
+cli_framework: none
+format_tool: ruff
+get_package_version_from_vcs: true
+github_user: moonmath-ai
+in_codecov: false
+in_pypi: false
+in_rtd: false
+jupyter_files: forbid
+license: MIT
+package_description: Runner for generative models with local and W&B tracking.
+package_name: lite_runner
+project_name: lite-runner
+python_min: 10
+user_email: tsvika@moonmath.ai
+user_name: MoonMath.ai
+year: 2026

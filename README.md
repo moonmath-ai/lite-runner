@@ -1,16 +1,29 @@
 # lite-runner
 
-Experiment runner for generative models with W&B tracking.
+[![Tests][tests-badge]][tests-link]
+[![uv][uv-badge]][uv-link]
+[![Ruff][ruff-badge]][ruff-link]
+\
+[![Made Using tsvikas/python-template][template-badge]][template-link]
+[![GitHub Discussion][github-discussions-badge]][github-discussions-link]
+[![PRs Welcome][prs-welcome-badge]][prs-welcome-link]
+
+## Overview
+
+Runner for generative models with local and W&B tracking.
 
 Write a small Python script per model that declares params, outputs, and metrics.
 `lite-runner` handles the rest: CLI parsing, interactive prompts for missing values,
 subprocess execution, stdout/stderr capture, metric extraction, file uploads to W&B,
 and code snapshots for reproducibility.
 
+
 ## Install
 
+Install the package using pip (or uv, poetry, etc.):
+
 ```bash
-pip install lite-runner@git+https://github.com/tsvikas/lite-runner
+pip install git+https://github.com/moonmath-ai/lite-runner.git
 ```
 
 Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies):
@@ -204,3 +217,21 @@ Methods:
 | `run.summary` | exit_code, duration_seconds, status, metrics |
 | Artifacts | Log files, code snapshot, artifact-type outputs |
 | Media | Videos and images from `path-*` type params/outputs |
+
+## Contributing
+
+Interested in contributing?
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guideline.
+
+[github-discussions-badge]: https://img.shields.io/static/v1?label=Discussions&message=Ask&color=blue&logo=github
+[github-discussions-link]: https://github.com/moonmath-ai/lite-runner/discussions
+[prs-welcome-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg
+[prs-welcome-link]: https://opensource.guide/how-to-contribute/
+[ruff-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
+[ruff-link]: https://github.com/astral-sh/ruff
+[template-badge]: https://img.shields.io/badge/%F0%9F%9A%80_Made_Using-tsvikas%2Fpython--template-gold
+[template-link]: https://github.com/tsvikas/python-template
+[tests-badge]: https://github.com/moonmath-ai/lite-runner/actions/workflows/ci.yml/badge.svg
+[tests-link]: https://github.com/moonmath-ai/lite-runner/actions/workflows/ci.yml
+[uv-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json
+[uv-link]: https://github.com/astral-sh/uv

@@ -1,23 +1,275 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+
 [project]
+dynamic = ["version"]
 name = "lite-runner"
-version = "0.1.0"
-description = "Experiment runner for video diffusion models with W&B tracking"
-requires-python = ">=3.11"
+description = "Runner for generative models with local and W&B tracking."
+license = "MIT"
+license-files = ["LICEN[CS]E.*"]
+readme = "README.md"
+authors = [
+  {name = "MoonMath.ai", email = "tsvika@moonmath.ai"}
+]
+keywords = []
+classifiers = [
+  # TODO: remove when ready to upload to pypi
+  "Private :: Do Not Upload",
+  # TODO: choose more classifiers from the list in https://pypi.org/classifiers/
+  # i.e.: Environment, Framework, Intended Audience, Topic
+  # TODO: update the development status
+  "Development Status :: 1 - Planning",
+  # target os
+  "Operating System :: OS Independent",
+  # python versions
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+# urls.Homepage = "https://lite-runner.readthedocs.io"
+urls.Source = "https://github.com/moonmath-ai/lite-runner"
+urls.Changelog = "https://github.com/moonmath-ai/lite-runner/blob/main/CHANGELOG.md"
+# urls.ReleaseNotes = "https://github.com/moonmath-ai/lite-runner/releases"
+# urls.Documentation = "https://lite-runner.readthedocs.io"
+urls.Issues = "https://github.com/moonmath-ai/lite-runner/issues"
+# urls.Funding = "https://github.com/sponsors/moonmath-ai"
+# Discussions = "https://github.com/moonmath-ai/lite-runner/discussions"
+
+requires-python = ">=3.10"
 dependencies = [
     "wandb",
     "questionary",
-    "gitpython>=3.1.46",
+    "gitpython",
 ]
 
+
+[project.optional-dependencies]
+# optional_name = ["some_package >=1.0"]
+
+[project.scripts]
+# lite-runner = "lite_runner.cli:app"
+
+[project.gui-scripts]
+# lite-runner = "lite_runner.gui:app.run"
+
+
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+  ## used in the justfile
+  "rust-just ~=1.0",
+  "pre-commit ~=4.0",
+  "black ~=26.1",
+  "ruff ~=0.14.0",
+]
+test = [
+  "pytest ~=9.0",
+  ## running
+  "pytest-reverse ~=1.0",
+  "pytest-xdist[psutil] ~=3.0",
+  ## reporting
+  "pytest-clarity ~=1.0",
+  "pytest-github-actions-annotate-failures ~=0.3.0",
+  ## extras
+  "pytest-benchmark ~=5.0",
+  "pytest-cov ~=7.0",
+  ## fixtures
+  # "freezegun ~=1.0",
+  # "hypothesis ~=6.0",
+  # "pytest-datadir ~=1.0",
+  # "pytest-mock ~=3.3",
+  # "pytest-regressions ~=2.0",
+]
+docs = [
+  "mkdocs ~=1.0",
+  "mkdocs-material ~=9.0",
+  "mkdocstrings-python ~=1.0",
+  "mkdocs-gen-files ~=0.5.0",
+  "mkdocs-literate-nav ~=0.6.0",
+  "mkdocs-section-index ~=0.3.0",
+]
+typing = [
+  "mypy ~=1.19.0",
+  "ty ~=0.0",
+  # add "*-stubs" and "types-*" packages here (">=0")
+]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/lite_runner"]
+[tool.uv]
+required-version = ">=0.7.3"
+default-groups = ["dev", "test", "typing"]
+
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/lite_runner/_version.py"
+
 
 [tool.pytest]
-testpaths = ["tests"]
+minversion = "9.0"
+testpaths = [
+  "src/",
+  "tests/",
+]
+addopts = [
+  ## collection
+  "--doctest-modules",
+  ## reporting
+  "-ra",
+  ## addons: pytest-benchmark
+  "--benchmark-disable",
+  ## addons: pytest-cov
+  # this might affect debuggers.
+  # use `--no-cov` to disable in the debugger
+  # see https://pytest-cov.readthedocs.io/en/latest/debuggers.html
+  "--cov=src/lite_runner",
+  "--cov-branch",
+  ## addons: pytest-reverse
+  "--reverse",
+  ## addons: pytest-xdist
+  # this enable parallel execution, but hides filenames in output
+  # "--numprocesses=auto",  # pytest-xdist
+]
+## testing
+strict = true
+empty_parameter_set_mark = "xfail"  # The default value in future releases
+filterwarnings = [
+  "error",
+  "default::DeprecationWarning",
+  "error::DeprecationWarning:lite_runner",
+]
+log_level = "INFO"
+
+
+[tool.coverage]
+run.omit = [
+  "src/lite_runner/__main__.py",
+  "src/lite_runner/_version.py",
+]
+
+
+[tool.ty]
+src.include = [
+    "src",
+    "tests",
+]
+
+
+[tool.mypy]
+files = ["src", "tests"]
+mypy_path = "stubs"
+fixed_format_cache = true
+# set the platform
+python_version = "3.10"
+# enable checks [last updated: mypy 1.19]
+strict = true
+strict_equality_for_none = true
+local_partial_types = true
+disallow_any_unimported = true
+warn_unreachable = true
+disallow_any_explicit = true
+enable_error_code = [
+  # from https://mypy.readthedocs.io/en/stable/error_code_list2.html
+  "redundant-self",
+  "deprecated",
+  "redundant-expr",
+  "possibly-undefined",
+  "truthy-bool",
+  "truthy-iterable",
+  "ignore-without-code",
+  "unused-awaitable",
+  "explicit-override",
+  "mutable-override",
+  "unimported-reveal",
+  "exhaustive-match",
+]
+
+
+[tool.deptry.per_rule_ignores]
+# add dependencies that are not used in the codebase
+DEP002 = [
+]
+
+
+[tool.ruff.format]
+docstring-code-format = true
+
+
+[tool.ruff.lint]
+# Use google-style conventions for docstrings
+pydocstyle.convention = "google"
+select = [
+  "ALL",
+  # extend rules outside pydocstyle google convention
+  "D401",  # pydocstyle/non-imperative-mood
+  "D404",  # pydocstyle/docstring-starts-with-this
+]
+ignore = [
+  # needed only in large codebases
+  "TD002",    # flake8-todos/missing-todo-author
+  "TD003",    # flake8-todos/missing-todo-link
+  # incompatible with other rules
+  "COM812",   # flake8-commas/missing-trailing-comma (incompatible with black)
+  # disagree:
+  "PD010",    # pandas-vet/pandas-use-of-dot-pivot-or-unstack
+  "PD013",    # pandas-vet/pandas-use-of-dot-stack
+  # annoying:
+  "EM10",     # flake8-errmsg/*-in-exception
+  "RET504",   # flake8-return/unnecessary-assign
+  # ban something useful for a possibly good reason
+  #"C901",     # mccabe/complex-structure
+  #"S101",     # flake8-bandit/assert
+  #"FIX00",    # flake8-fixme/line-contains-*
+  #"ERA001",   # eradicate/commented-out-code
+  #"PLR091",   # PyLint-Refactor/too-many-*
+  #"TRY003",   # tryceratops/raise-vanilla-args
+]
+# objects that should be treated equivalently to a logging.Logger object.
+logger-objects = ["loguru.logger"]
+# allow the omission of a return type hint for __init__
+flake8-annotations.mypy-init-return = true
+# allow `dict(a=1, b=2)`
+flake8-comprehensions.allow-dict-calls-with-keyword-arguments = true
+
+# flag modules or module members that may not be imported or accessed
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"collections.namedtuple".msg = "Use typing.NamedTuple or @dataclasses.dataclass(frozen=True, slots=True)"
+
+[tool.ruff.lint.per-file-ignores]
+"src/lite_runner/cli.py" = [
+  "T20",      # flake8-print
+]
+"src/lite_runner/_version.py" = [
+  "ALL",
+]
+"scripts/**.py" = [
+  "T20",      # flake8-print
+  "INP001",   # implicit-namespace-package
+]
+"!tests/test_*.py" = [
+  "PT",       # flake8-pytest-style
+]
+"tests/**.py" = [
+  "INP001",   # flake8-no-pep420/implicit-namespace-package
+]
+"tests/test_*.py" = [
+  "PLR2004",  # PyLint-Refactor/magic-value-comparison
+  "S101",     # flake8-bandit/assert
+  "D1",       # pydocstyle/undocumented-*
+  "TC001",    # flake8-type-checking/typing-only-*-import
+  "TC002",    # flake8-type-checking/typing-only-*-import
+  "TC003",    # flake8-type-checking/typing-only-*-import
+]
+
+
+[tool.pylint]
+py-version = "3.10"
+ignore-paths = [".*/_version.py"]
+reports.output-format = "colorized"

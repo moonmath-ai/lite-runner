@@ -1,9 +1,214 @@
+# exclude those files from pre-commit checks
+exclude: "^$\
+  |^\\.copier-answers\\.yml$\
+  |^tests/test_\\w*/output/\
+  "
+
+# pre-commit.ci config
+ci:
+  # TODO: enable pre-commit.ci repository access
+  autoupdate_commit_msg: '[pre-commit.ci] 🔧 pre-commit autoupdate'
+  autofix_commit_msg: '[pre-commit.ci] 🎨 pre-commit fixes'
+  autoupdate_schedule: quarterly
+
 repos:
+  # Sync Python and pre-commit package versions
+  # pyproject.toml -> uv.lock
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: uv-lock
+  # uv.lock -> .pre-commit-config.yaml
+  - repo: https://github.com/tsvikas/sync-with-uv
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: sync-with-uv
+  # .pre-commit-config.yaml -> .pre-commit-config.yaml
+  - repo: https://github.com/pre-commit/sync-pre-commit-deps
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: sync-pre-commit-deps
+        args: [--yaml-mapping, '2', --yaml-sequence, '4', --yaml-offset, '2']
+
+  # General hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: <placeholder_until_update_deps>
+    hooks:
+      # Filesystem
+      - id: check-illegal-windows-names
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      # Git related
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-vcs-permalinks
+      - id: forbid-submodules  # use subtree
+      # Security
+      - id: detect-private-key
+      # Text encoding/formatting
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+      # Python
+      - id: check-ast
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: name-tests-test
+        args: [--pytest-test-first]
+      - id: requirements-txt-fixer
+      # Symlinks
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      # File validation
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      # File formatting
+      - id: pretty-format-json
+        exclude_types: [jupyter]
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: <placeholder_until_update_deps>
+    hooks:
+      # Python files
+      - id: python-check-blanket-noqa
+      - id: python-check-blanket-type-ignore
+      - id: python-check-mock-methods
+      - id: python-no-eval
+      - id: python-no-log-warn
+      - id: python-use-type-annotations
+      # reStructuredText files
+      - id: rst-backticks
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
+      # UTF-8 encoding
+      - id: text-unicode-replacement-char
+
+  # All files
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: editorconfig-checker
+        exclude_types: [jupyter]
+  - repo: https://github.com/google/keep-sorted
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: keep-sorted
+
+  # Spell checking
+  - repo: https://github.com/codespell-project/codespell
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: codespell
+  - repo: https://github.com/adhtruong/mirrors-typos
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: typos
+  - repo: local
+    hooks:
+      - id: disallow-caps
+        name: disallow improper capitalization
+        language: pygrep
+        entry: PyBind|Numpy|Cmake|CCache|Github|PyTest
+        exclude: .pre-commit-config.yaml
+
+  # Markdown files
+  - repo: https://github.com/hukkin/mdformat
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: mdformat
+        exclude: ^docs/reference/
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-footnote
+          - mdformat-gfm-alerts
+
+  # reStructuredText files
+  - repo: https://github.com/PyCQA/doc8
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: doc8
+
+  # Python files
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: <placeholder_until_update_deps>
+    hooks:
+      # used to keep the blacken-docs in sync
+      - id: black
+        stages: [manual]
+  - repo: https://github.com/adamchainz/blacken-docs
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: blacken-docs
+        additional_dependencies: [black==26.1.0]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: <placeholder_until_update_deps>
     hooks:
       - id: ruff-check
         alias: ruff-isort
         name: ruff isort
-        args: [--select, I, --fix]
+        args: [--select, I001, --fix]
       - id: ruff-format
+      - id: ruff-check
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: mypy
+        name: mypy (without imports)
+        args:
+          - --config-file
+          - ''
+          - --ignore-missing-imports
+          - --disable-error-code=import-untyped
+
+  # Jupyter Notebook files
+  - repo: local
+    hooks:
+      - id: forbid-ipynb  # use jupytext
+        name: forbid ipynb
+        entry: filenames must not end in .ipynb
+        language: fail
+        types: [jupyter]
+
+  # pyproject.toml
+  - repo: https://github.com/henryiii/validate-pyproject-schema-store
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: validate-pyproject
+
+  # YAML files
+  - repo: https://github.com/adrienverge/yamllint
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: yamllint
+
+  # GitHub files
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: check-dependabot
+      - id: check-github-actions
+      - id: check-github-workflows
+      - id: check-readthedocs
+  - repo: https://github.com/rhysd/actionlint
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: actionlint
+
+  # Shell scripts
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: shellcheck
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: shfmt
+  - repo: https://github.com/hugoh/pre-commit-fish
+    rev: <placeholder_until_update_deps>
+    hooks:
+      - id: fish_syntax
+      - id: fish_indent

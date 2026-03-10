@@ -1,0 +1,33 @@
+site_name: lite-runner
+site_url: 'https://lite-runner.readthedocs.io/'
+site_author: MoonMath.ai
+site_description: Runner for generative models with local and W&B tracking.
+
+repo_name: 'moonmath-ai/lite-runner'
+repo_url: 'https://github.com/moonmath-ai/lite-runner'
+
+theme:
+  name: material
+  # https://squidfunk.github.io/mkdocs-material/setup/
+
+plugins:
+  - search
+  - gen-files:
+      # https://oprypin.github.io/mkdocs-gen-files/index.html
+      scripts:
+        - scripts/gen_ref_pages.py
+  - literate-nav:
+      # https://oprypin.github.io/mkdocs-literate-nav/
+      nav_file: SUMMARY.md
+  - section-index  # https://oprypin.github.io/mkdocs-section-index/
+  - mkdocstrings:
+      # https://mkdocstrings.github.io/usage/
+      default_handler: python
+      handlers:
+        python:
+          # https://mkdocstrings.github.io/python/usage/
+          paths: [src]
+
+nav:
+  - Home: index.md
+  - Code Reference: reference/

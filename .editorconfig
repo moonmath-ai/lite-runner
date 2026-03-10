@@ -1,0 +1,30 @@
+root = true
+
+[*]
+indent_style = space
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# common file types with indent=2
+[*.{toml,yaml,yml}]
+indent_size = 2
+
+# CSV-like
+[*.{tsv,tab,csv}]
+indent_style = unset
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+# These file types are formatted with tools (indent=2)
+[*.{md,sh,json}]
+indent_size = unset
+
+# These file types are formatted with tools (indent=4)
+[*.{py,fish}]
+indent_size = unset
+
+# LICENSE files
+[LICENSE]
+indent_size = unset
