@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import git
-
 import wandb
 
 from .params import UNSET, _log_as_from_type
