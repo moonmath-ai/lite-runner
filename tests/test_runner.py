@@ -1,4 +1,4 @@
-"""Tests for genai_runner.runner."""
+"""Tests for lite_runner.runner."""
 
 import json
 import re
@@ -9,8 +9,8 @@ import git
 import pytest
 from conftest import _FAKE_GIT_INFO, _make_runner, _mock_wb_run
 
-from genai_runner import UNSET, Metric, Param, Runner
-from genai_runner.runner import _collect_git_info, _interpolate_output
+from lite_runner import UNSET, Metric, Param, Runner
+from lite_runner.runner import _collect_git_info, _interpolate_output
 
 # ---------------------------------------------------------------------------
 # CLI parsing (via parse_cli)
@@ -226,10 +226,10 @@ def test_override_run_skips_prompting(tmp_path):
         ],
     )
     with (
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.override(prompt="a cat").run(
             no_interactive=True,
@@ -277,7 +277,7 @@ def test_with_metadata_partial():
 
 def test_ask_user_fills_from_questionary():
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     assert r.param_values["prompt"] == "a cat"
@@ -300,7 +300,7 @@ def test_ask_user_non_interactive_ok_with_defaults():
 
 def test_ask_user_select_for_choices():
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         r = runner.ask_user()
     assert r.param_values["mode"] == "fast"
@@ -317,7 +317,7 @@ def test_ask_user_type_list_prompts_each_part():
         ],
     )
     answers = iter(["0", "0.8"])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "photo.jpg"
         mock_q.text.return_value.ask.side_effect = lambda: next(answers)
         r = runner.ask_user()
@@ -328,7 +328,7 @@ def test_ask_user_type_list_prompts_each_part():
 def test_ask_user_path_image_uses_path_widget():
     """path-image type should use questionary.path() widget."""
     runner = _make_runner(params=[Param("img", type="path-image")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "/fake/photo.jpg"
         r = runner.ask_user()
     mock_q.path.assert_called_once()
@@ -338,7 +338,7 @@ def test_ask_user_path_image_uses_path_widget():
 def test_ask_user_cancel_raises():
     """Cancelling a text prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = None
         with pytest.raises(KeyboardInterrupt):
             runner.ask_user()
@@ -347,7 +347,7 @@ def test_ask_user_cancel_raises():
 def test_ask_user_prompts_default_param():
     """Params with defaults are prompted with default pre-filled."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "99"
         r = runner.ask_user()
     mock_q.text.assert_called_once_with("seed:", default="42")
@@ -358,7 +358,7 @@ def test_ask_user_skips_cli_provided_param():
     """Params explicitly provided on CLI are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.parse_cli(["--seed", "99"])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         r = r.ask_user()
     mock_q.text.assert_not_called()
     assert r.param_values["seed"] == 99
@@ -368,7 +368,7 @@ def test_ask_user_skips_overridden_param():
     """Params set via overrides are not prompted."""
     runner = _make_runner(params=[Param("seed", type="int", default=42)])
     r = runner.override(seed=77)
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         r = r.ask_user()
     mock_q.text.assert_not_called()
     assert r.param_values["seed"] == 77
@@ -382,7 +382,7 @@ def test_ask_user_skips_no_prompt_param():
             Param("threshold", type="float", default=-3.0, prompt=False),
         ],
     )
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     # Only prompt should be prompted, not threshold
@@ -633,7 +633,7 @@ def test_run_kwargs_override_defaults():
         params=[Param("prompt", default="test")],
         tags=["v1"],
     )
-    with patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
+    with patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO):
         runner.run(dry_run=True, no_interactive=True)
 
 
@@ -641,7 +641,7 @@ def test_run_kwargs_warn_on_contradiction(caplog):
     """run() warns when kwargs contradict explicit CLI flags."""
     runner = _make_runner()
     r = runner.parse_cli(["--no-interactive"])
-    with caplog.at_level("WARNING", logger="genai_runner"):
+    with caplog.at_level("WARNING", logger="lite_runner"):
         flags = r.run_flags.merge(no_interactive=False)
     assert flags.no_interactive is False  # kwarg wins
     assert "no_interactive" in caplog.text
@@ -689,8 +689,8 @@ def test_dry_run_prints_command_no_wandb(caplog):
     )
     r = runner.parse_cli(["--prompt", "test"])
     with (
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        caplog.at_level("INFO", logger="genai_runner"),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        caplog.at_level("INFO", logger="lite_runner"),
     ):
         r.run(dry_run=True, no_interactive=True)
     out = re.sub(r"\033\[[0-9;]*m", "", caplog.text)
@@ -705,7 +705,7 @@ def test_no_project_raises_valueerror():
     """Runner with no wandb_project and no git repo raises ValueError."""
     runner = Runner(command="echo", params=[])
     with (
-        patch("genai_runner.runner._collect_git_info", return_value={}),
+        patch("lite_runner.runner._collect_git_info", return_value={}),
         pytest.raises(ValueError, match="Cannot determine project name"),
     ):
         runner.run(no_interactive=True)
@@ -735,11 +735,11 @@ def test_full_run_with_mocked_wandb(tmp_path):
     )
 
     with (
-        patch("genai_runner.backends.wandb", mock_wb),
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.backends.wandb", mock_wb),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.run(no_interactive=True)
 
@@ -750,7 +750,7 @@ def test_full_run_with_mocked_wandb(tmp_path):
     assert wb_run.summary["status"] == "success"
     assert wb_run.summary["exit_code"] == 0
     assert wb_run.summary["duration_seconds"] > 0
-    assert (tmp_path / "genai_runs" / "test-repo").exists()
+    assert (tmp_path / "lite_runs" / "test-repo").exists()
     wb_run.finish.assert_called_once_with(exit_code=0)
 
 
@@ -765,11 +765,11 @@ def test_run_project_kwarg_flows_to_backend(tmp_path):
         params=[Param("seed", type="int", default=42)],
     )
     with (
-        patch("genai_runner.backends.wandb", mock_wb),
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.backends.wandb", mock_wb),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.run(no_interactive=True, project="custom-proj")
 
@@ -789,11 +789,11 @@ def test_full_run_explicit_group(tmp_path):
     )
 
     with (
-        patch("genai_runner.backends.wandb", mock_wb),
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.backends.wandb", mock_wb),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.run(no_interactive=True)
 
@@ -807,15 +807,15 @@ def test_full_run_explicit_group(tmp_path):
 
 def test_git_info_returns_expected_keys():
     mock_repo = MagicMock()
-    mock_repo.working_dir = "/home/user/genai-runner"
+    mock_repo.working_dir = "/home/user/lite-runner"
     mock_repo.head.commit.hexsha = "abc123def456"
     mock_repo.head.is_detached = False
     mock_repo.active_branch.name = "main"
     mock_repo.is_dirty.return_value = False
-    with patch("genai_runner.runner.git.Repo", return_value=mock_repo):
+    with patch("lite_runner.runner.git.Repo", return_value=mock_repo):
         info = _collect_git_info()
     assert info == {
-        "repo": "genai-runner",
+        "repo": "lite-runner",
         "commit": "abc123def456",
         "branch": "main",
         "dirty": False,
@@ -824,18 +824,18 @@ def test_git_info_returns_expected_keys():
 
 def test_git_info_dirty_flag():
     mock_repo = MagicMock()
-    mock_repo.working_dir = "/home/user/genai-runner"
+    mock_repo.working_dir = "/home/user/lite-runner"
     mock_repo.head.commit.hexsha = "abc123"
     mock_repo.head.is_detached = False
     mock_repo.active_branch.name = "main"
     mock_repo.is_dirty.return_value = True
-    with patch("genai_runner.runner.git.Repo", return_value=mock_repo):
+    with patch("lite_runner.runner.git.Repo", return_value=mock_repo):
         assert _collect_git_info()["dirty"] is True
 
 
 def test_git_info_empty_outside_repo():
     with patch(
-        "genai_runner.runner.git.Repo",
+        "lite_runner.runner.git.Repo",
         side_effect=git.InvalidGitRepositoryError,
     ):
         assert _collect_git_info() == {}
@@ -871,15 +871,15 @@ def test_full_run_no_wandb(tmp_path):
     )
 
     with (
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.run(no_wandb=True, no_interactive=True)
 
     # Find the output dir
-    project_dir = tmp_path / "genai_runs" / "test-repo"
+    project_dir = tmp_path / "lite_runs" / "test-repo"
     assert project_dir.exists()
     run_dirs = list(project_dir.iterdir())
     assert len(run_dirs) == 1
@@ -928,11 +928,11 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     )
 
     with (
-        patch("genai_runner.backends.wandb", mock_wb),
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.backends.wandb", mock_wb),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
     ):
         runner.run(no_interactive=True)
 
@@ -940,7 +940,7 @@ def test_full_run_with_wandb_also_writes_run_info(tmp_path):
     mock_wb.init.assert_called_once()
 
     # run_info.json should also exist
-    project_dir = tmp_path / "genai_runs" / "test-repo"
+    project_dir = tmp_path / "lite_runs" / "test-repo"
     run_dirs = list(project_dir.iterdir())
     assert len(run_dirs) == 1
     run_info_path = run_dirs[0] / "run_info.json"
@@ -960,15 +960,15 @@ def test_no_wandb_failed_run(tmp_path):
     )
 
     with (
-        patch("genai_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
-        patch("genai_runner.backends.create_repo_archive", return_value=None),
-        patch("genai_runner.backends.create_repo_diff", return_value=None),
-        patch("genai_runner.runner.RUNS_DIR", tmp_path / "genai_runs"),
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
         pytest.raises(SystemExit, match="1"),
     ):
         runner.run(no_wandb=True, no_interactive=True)
 
-    project_dir = tmp_path / "genai_runs" / "test-repo"
+    project_dir = tmp_path / "lite_runs" / "test-repo"
     run_dirs = list(project_dir.iterdir())
     output_dir = run_dirs[0]
     run_info = json.loads((output_dir / "run_info.json").read_text())
@@ -1009,7 +1009,7 @@ def test_sources_fixed():
 
 def test_sources_prompt():
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "a cat"
         r = runner.ask_user()
     assert r.param_sources["prompt"] == "prompt"

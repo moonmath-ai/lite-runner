@@ -1,4 +1,4 @@
-"""Data classes and type system for genai_runner."""
+"""Data classes and type system for lite_runner."""
 
 from __future__ import annotations
 

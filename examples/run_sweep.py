@@ -1,7 +1,7 @@
 # Run with: uv run python examples/run_sweep.py
 """Example sweep: same model, varying threshold and mode."""
 
-from genai_runner import Metric, Param, Runner
+from lite_runner import Metric, Param, Runner
 
 runner = Runner(
     command="python examples/fake_model.py",

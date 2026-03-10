@@ -1,4 +1,4 @@
-"""genai_runner -- Experiment runner for video diffusion models with W&B tracking."""
+"""lite_runner -- Experiment runner for video diffusion models with W&B tracking."""
 
 import logging
 

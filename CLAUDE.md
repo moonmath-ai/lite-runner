@@ -17,7 +17,7 @@ Python >=3.11 required. Build backend is hatchling.
 
 ## Architecture
 
-Four modules under `src/genai_runner/`:
+Four modules under `src/lite_runner/`:
 
 - **`params.py`** — Data classes and type system: `Param`, `Output`, `Metric`, type constants, `UNSET` sentinel.
 - **`backends.py`** — `LogBackend` protocol, `WandbBackend`, `JsonBackend`, `DryRunBackend`. Collect/prepare functions for metrics, files, code snapshots.
@@ -41,7 +41,7 @@ Four core abstractions:
   (`"cli"`, `"override"`, `"default"`, `"fixed"`, `"prompt"`).
   Post-run steps are individually try-excepted so W&B always finishes.
 
-`$output` is a placeholder interpolated to `~/genai_runs/<project>/<timestamp>_<run_name>/` at runtime.
+`$output` is a placeholder interpolated to `~/lite_runs/<project>/<timestamp>_<run_name>/` at runtime.
 
 The `UNSET` sentinel marks params the user explicitly skipped (typed `-` at prompt) — these are omitted from the built command.
 

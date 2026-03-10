@@ -1,10 +1,10 @@
-"""Shared fixtures and helpers for genai_runner tests."""
+"""Shared fixtures and helpers for lite_runner tests."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from genai_runner import Runner
+from lite_runner import Runner
 
 _FAKE_GIT_INFO = {
     "repo": "test-repo",

@@ -1,12 +1,12 @@
-"""Tests for genai_runner.backends."""
+"""Tests for lite_runner.backends."""
 
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from genai_runner import UNSET, Metric, Output, Param
-from genai_runner.backends import (
+from lite_runner import UNSET, Metric, Output, Param
+from lite_runner.backends import (
     _split_glob,
     collect_metrics,
     collect_param_files,
@@ -151,7 +151,7 @@ def test_prepare_extra_outputs_dir_zip(tmp_path):
 def test_prepare_extra_outputs_glob_no_match(tmp_path, caplog):
     """Glob with no matches logs a warning."""
     outputs = [Output("$output/nope/*.png", log_as="image")]
-    with caplog.at_level("WARNING", logger="genai_runner"):
+    with caplog.at_level("WARNING", logger="lite_runner"):
         items = prepare_extra_outputs(outputs, tmp_path)
     assert items == []
     assert "matched no files" in caplog.text

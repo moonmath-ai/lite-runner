@@ -1,4 +1,4 @@
-"""Runner orchestrator and helpers for genai_runner."""
+"""Runner orchestrator and helpers for lite_runner."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ from .params import (
 )
 
 PACKAGE_NAME = __name__.split(".")[0]
-RUNS_DIR = Path.home() / "genai_runs"
+RUNS_DIR = Path.home() / "lite_runs"
 
 logger = logging.getLogger(PACKAGE_NAME)
 

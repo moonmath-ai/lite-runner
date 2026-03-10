@@ -1,23 +1,23 @@
-# genai-runner
+# lite-runner
 
 Experiment runner for generative models with W&B tracking.
 
 Write a small Python script per model that declares params, outputs, and metrics.
-`genai-runner` handles the rest: CLI parsing, interactive prompts for missing values,
+`lite-runner` handles the rest: CLI parsing, interactive prompts for missing values,
 subprocess execution, stdout/stderr capture, metric extraction, file uploads to W&B,
 and code snapshots for reproducibility.
 
 ## Install
 
 ```bash
-pip install genai-runner@git+https://github.com/tsvikas/genai-runner
+pip install lite-runner@git+https://github.com/tsvikas/lite-runner
 ```
 
 Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies):
 
 ```python
 # /// script
-# dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/tsvikas/lite-runner"]
 # ///
 ```
 
@@ -27,9 +27,9 @@ Create a `run.py` for your model:
 
 ```python
 # /// script
-# dependencies = ["genai-runner @ git+https://github.com/tsvikas/genai-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/tsvikas/lite-runner"]
 # ///
-from genai_runner import Runner, Param, Metric
+from lite_runner import Runner, Param, Metric
 
 runner = Runner(
     command="python generate.py",
@@ -60,7 +60,7 @@ python run.py --prompt "a cat" --dry-run        # print command, don't run
 Each `runner.run()` call:
 
 1. Parses CLI args (all params are optional in argparse; missing ones trigger TUI prompts)
-2. Creates an output directory at `~/genai_runs/<project>/<timestamp>_<run_name>/`
+2. Creates an output directory at `~/lite_runs/<project>/<timestamp>_<run_name>/`
 3. Inits a W&B run and logs all params, git info, and host metadata
 4. Saves a code snapshot (git archive + dirty diff) as a W&B artifact
 5. Builds and runs the subprocess, streaming stdout/stderr to terminal and log files

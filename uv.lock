@@ -119,7 +119,7 @@ wheels = [
 ]
 
 [[package]]
-name = "genai-runner"
+name = "lite-runner"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

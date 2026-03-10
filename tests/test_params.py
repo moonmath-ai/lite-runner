@@ -1,12 +1,12 @@
-"""Tests for genai_runner.params."""
+"""Tests for lite_runner.params."""
 
 from unittest.mock import patch
 
 import pytest
 from conftest import _make_runner
 
-from genai_runner import UNSET, Param
-from genai_runner.params import _log_as_from_type
+from lite_runner import UNSET, Param
+from lite_runner.params import _log_as_from_type
 
 # ---------------------------------------------------------------------------
 # _log_as_from_type
@@ -186,7 +186,7 @@ def test_no_prompt_with_default_ok():
 def test_ask_user_prompts_bool_param():
     """Bool params are prompted via questionary.confirm()."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.confirm.return_value.ask.return_value = True
         r = runner.ask_user()
     mock_q.confirm.assert_called_once_with("turbo:", default=False)
@@ -197,7 +197,7 @@ def test_ask_user_prompts_bool_param():
 def test_ask_user_bool_false():
     """Bool param answered False is logged."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.confirm.return_value.ask.return_value = False
         r = runner.ask_user()
     assert r.param_values["turbo"] is False
@@ -207,7 +207,7 @@ def test_ask_user_bool_skips_cli_provided():
     """Bool param set via CLI is not re-prompted."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
     r = runner.parse_cli(["--turbo"])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         r = r.ask_user()
     mock_q.confirm.assert_not_called()
     assert r.param_values["turbo"] is True
@@ -216,7 +216,7 @@ def test_ask_user_bool_skips_cli_provided():
 def test_ask_user_bool_cancel_raises():
     """Cancelling a bool prompt raises KeyboardInterrupt."""
     runner = _make_runner(params=[Param("turbo", type="bool")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.confirm.return_value.ask.return_value = None
         with pytest.raises(KeyboardInterrupt):
             runner.ask_user()
@@ -238,7 +238,7 @@ def test_bool_param_logged_in_config():
 def test_skip_single_param_returns_unset():
     """Typing '-' at a text prompt returns UNSET."""
     runner = _make_runner(params=[Param("prompt")])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.text.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["prompt"] is UNSET
@@ -247,7 +247,7 @@ def test_skip_single_param_returns_unset():
 def test_skip_select_param_returns_unset():
     """Typing '-' at a select prompt returns UNSET."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["mode"] is UNSET
@@ -256,7 +256,7 @@ def test_skip_select_param_returns_unset():
 def test_skip_select_includes_dash_in_choices():
     """Select prompt includes '-' as the first choice."""
     runner = _make_runner(params=[Param("mode", choices=["fast", "slow"])])
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.select.return_value.ask.return_value = "fast"
         runner.ask_user()
     call_args = mock_q.select.call_args
@@ -274,7 +274,7 @@ def test_skip_nargs_returns_unset():
             ),
         ],
     )
-    with patch("genai_runner.params.questionary") as mock_q:
+    with patch("lite_runner.params.questionary") as mock_q:
         mock_q.path.return_value.ask.return_value = "-"
         r = runner.ask_user()
     assert r.param_values["image"] is UNSET

@@ -1,7 +1,7 @@
 # Run with: uv run python examples/run_example.py
 """Example run config for the fake model."""
 
-from genai_runner import Metric, Output, Param, Runner
+from lite_runner import Metric, Output, Param, Runner
 
 runner = Runner(
     command="python examples/fake_model.py",

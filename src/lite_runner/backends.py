@@ -1,4 +1,4 @@
-"""Log backend protocol and implementations for genai_runner."""
+"""Log backend protocol and implementations for lite_runner."""
 
 from __future__ import annotations
 

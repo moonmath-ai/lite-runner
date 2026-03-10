@@ -1,5 +1,5 @@
 [project]
-name = "genai-runner"
+name = "lite-runner"
 version = "0.1.0"
 description = "Experiment runner for video diffusion models with W&B tracking"
 requires-python = ">=3.11"
@@ -17,7 +17,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/genai_runner"]
+packages = ["src/lite_runner"]
 
 [tool.pytest]
 testpaths = ["tests"]

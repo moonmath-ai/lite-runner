@@ -4,7 +4,7 @@
 from functools import lru_cache
 
 # from huggingface_hub import snapshot_download  # noqa: F401
-from genai_runner import Metric, Param, Runner
+from lite_runner import Metric, Param, Runner
 
 
 @lru_cache
