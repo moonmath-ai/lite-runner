@@ -105,7 +105,7 @@ def test_param_log_when_none_without_upload_type():
 
 
 def test_param_log_when_none_plain_path():
-    """path (no sub-type) has no upload intent, so log_when stays None."""
+    """Path (no sub-type) has no upload intent, so log_when stays None."""
     p = Param("config", type="path")
     assert p.log_when is None
 

@@ -56,22 +56,38 @@ class LogBackend(Protocol):
         group: str | None,
         tags: list[str],
         config: dict[str, object],
-    ) -> None: ...
+    ) -> None:
+        """Initialize the backend with project metadata and config."""
+        ...
 
     @property
-    def run_name(self) -> str: ...
+    def run_name(self) -> str:
+        """Return the run name."""
+        ...
 
-    def update_config(self, updates: dict[str, object]) -> None: ...
+    def update_config(self, updates: dict[str, object]) -> None:
+        """Merge updates into the run config."""
+        ...
 
-    def log_file(self, path: Path, log_as: str, key: str) -> None: ...
+    def log_file(self, path: Path, log_as: str, key: str) -> None:
+        """Log a file as the given type (artifact, video, image, text)."""
+        ...
 
-    def set_metric(self, name: str, value: object) -> None: ...
+    def set_metric(self, name: str, value: object) -> None:
+        """Set a single metric value."""
+        ...
 
-    def set_summary(self, summary: dict[str, object]) -> None: ...
+    def set_summary(self, summary: dict[str, object]) -> None:
+        """Set the run summary dict."""
+        ...
 
-    def set_tags(self, tags: list[str]) -> None: ...
+    def set_tags(self, tags: list[str]) -> None:
+        """Replace the run's tags."""
+        ...
 
-    def finish(self, exit_code: int) -> None: ...
+    def finish(self, exit_code: int) -> None:
+        """Finalize the run."""
+        ...
 
 
 class WandbBackend:
@@ -85,6 +101,7 @@ class WandbBackend:
         tags: list[str],
         config: dict[str, object],
     ) -> None:
+        """Initialize a W&B run."""
         self.run = wandb.init(
             project=project,
             name=name,
@@ -96,18 +113,22 @@ class WandbBackend:
 
     @property
     def run_name(self) -> str:
+        """Return the W&B run name."""
         return self.run.name or self.run.id or "run"
 
     @property
     def run_url(self) -> str:
+        """Return the W&B run URL."""
         url = self.run.url
         assert url is not None
         return url
 
     def update_config(self, updates: dict[str, object]) -> None:
+        """Merge updates into the W&B run config."""
         self.run.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
+        """Log a file to W&B as artifact, video, image, or text."""
         if log_as == "artifact":
             self.run.log_artifact(path, name=f"{key}-{self.run.id}", type=key)
         elif log_as == "video":
@@ -123,15 +144,19 @@ class WandbBackend:
             raise ValueError(msg)
 
     def set_metric(self, name: str, value: object) -> None:
+        """Set a metric in the W&B run summary."""
         self.run.summary[name] = value
 
     def set_summary(self, summary: dict[str, object]) -> None:
+        """Update the W&B run summary."""
         self.run.summary.update(summary)
 
     def set_tags(self, tags: list[str]) -> None:
+        """Replace the W&B run tags."""
         self.run.tags = tags
 
     def finish(self, exit_code: int) -> None:
+        """Finish the W&B run."""
         self.run.finish(exit_code=exit_code)
 
 
@@ -146,6 +171,7 @@ class JsonBackend:
         tags: list[str],
         config: dict[str, object],
     ) -> None:
+        """Initialize with project metadata."""
         self.metadata = {
             "project": project,
             "name": name or "(local)",
@@ -159,27 +185,34 @@ class JsonBackend:
 
     @property
     def run_name(self) -> str:
+        """Return the run name."""
         name = self.metadata["name"]
         assert isinstance(name, str)
         return name
 
     def update_config(self, updates: dict[str, object]) -> None:
+        """Merge updates into the config dict."""
         self.config.update(updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
+        """Record a file entry in the log."""
         self.files_logged.append({"path": str(path), "log_as": log_as, "key": key})
 
     def set_metric(self, name: str, value: object) -> None:
+        """Store a metric value."""
         self.metrics[name] = value
 
     def set_summary(self, summary: dict[str, object]) -> None:
+        """Set the run summary dict."""
         assert not self.summary, "set_summary called twice"
         self.summary = summary
 
     def set_tags(self, tags: list[str]) -> None:
+        """Replace the run tags."""
         self.metadata["tags"] = tags
 
     def finish(self, exit_code: int) -> None:
+        """Write run_info.json to the output directory."""
         output_dir_val = self.config["meta/output_dir"]
         assert isinstance(output_dir_val, str)
         output_dir = Path(output_dir_val)
@@ -210,6 +243,7 @@ class DryRunBackend:
         tags: list[str],
         config: dict[str, object],
     ) -> None:
+        """Log config to the dry-run logger."""
         self.run_name = name or "dry_run"
         _dry_run_logger.info("Project: %s", project)
         _dry_run_logger.info("Name: %s", self.run_name)
@@ -218,21 +252,27 @@ class DryRunBackend:
         _dry_run_logger.info("Config: %s", config)
 
     def update_config(self, updates: dict[str, object]) -> None:
+        """Log config updates."""
         _dry_run_logger.info("Updating config: %s", updates)
 
     def log_file(self, path: Path, log_as: str, key: str) -> None:
+        """Log a file entry."""
         _dry_run_logger.info("Logging %s [%s]: %s", key, log_as, path)
 
     def set_metric(self, name: str, value: object) -> None:
+        """Log a metric."""
         _dry_run_logger.info("Setting metric: %s to %s", name, value)
 
     def set_summary(self, summary: dict[str, object]) -> None:
+        """Log a summary."""
         _dry_run_logger.info("Setting summary: %s", summary)
 
     def set_tags(self, tags: list[str]) -> None:
+        """Log tag changes."""
         _dry_run_logger.info("Setting tags: %s", tags)
 
     def finish(self, exit_code: int) -> None:
+        """Log the exit code."""
         _dry_run_logger.info("Finishing with exit code: %s", exit_code)
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 def main():
+    """Run a fake video generation model for testing."""
     parser = argparse.ArgumentParser(description="Fake video generation model")
     parser.add_argument("--prompt", required=True, help="Text prompt")
     parser.add_argument("--output-path", required=True, help="Output video path")

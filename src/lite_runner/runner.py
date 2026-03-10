@@ -152,6 +152,7 @@ class Runner:
     tags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        """Parse command string and validate param names."""
         if isinstance(self.command, str):
             self.command = shlex.split(self.command)
         reserved = {f.name for f in fields(RunFlags)}

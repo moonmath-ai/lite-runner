@@ -109,6 +109,7 @@ class Param:
     prompt: bool = True
 
     def __post_init__(self) -> None:
+        """Validate param type and compute derived fields."""
         self._dest = self.name.replace("-", "_")
         if self.flag is None:
             self.flag = f"--{self.name.replace('_', '-')}"
