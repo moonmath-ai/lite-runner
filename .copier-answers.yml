@@ -5,7 +5,7 @@ cli_framework: none
 format_tool: ruff
 get_package_version_from_vcs: true
 github_user: moonmath-ai
-in_codecov: false
+in_codecov: true
 in_pypi: false
 in_rtd: false
 jupyter_files: forbid

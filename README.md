@@ -3,6 +3,7 @@
 [![Tests][tests-badge]][tests-link]
 [![uv][uv-badge]][uv-link]
 [![Ruff][ruff-badge]][ruff-link]
+[![codecov][codecov-badge]][codecov-link]
 \
 [![Made Using tsvikas/python-template][template-badge]][template-link]
 [![GitHub Discussion][github-discussions-badge]][github-discussions-link]
@@ -230,6 +231,8 @@ Methods:
 Interested in contributing?
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guideline.
 
+[codecov-badge]: https://codecov.io/gh/moonmath-ai/LiteRunner/graph/badge.svg
+[codecov-link]: https://codecov.io/gh/moonmath-ai/LiteRunner
 [github-discussions-badge]: https://img.shields.io/static/v1?label=Discussions&message=Ask&color=blue&logo=github
 [github-discussions-link]: https://github.com/moonmath-ai/LiteRunner/discussions
 [prs-welcome-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg
