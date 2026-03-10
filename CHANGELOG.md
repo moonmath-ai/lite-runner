@@ -6,4 +6,4 @@ All notable changes to this project will be documented in this file.
 
 - Initial release
 
-[unreleased]: https://github.com/moonmath-ai/lite-runner/releases/tag/HEAD
+[unreleased]: https://github.com/moonmath-ai/LiteRunner/releases/tag/HEAD

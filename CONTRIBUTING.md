@@ -1,4 +1,4 @@
-# Contributing to lite-runner
+# Contributing to LiteRunner
 
 Thank you for your interest in contributing! There are many ways to help improve this project.
 
@@ -6,11 +6,11 @@ Thank you for your interest in contributing! There are many ways to help improve
 
 ### 🐛 Report Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/moonmath-ai/lite-runner/issues/new) on GitHub.
+Found a bug or have a feature request? [Open an issue](https://github.com/moonmath-ai/LiteRunner/issues/new) on GitHub.
 
 ### 💬 Join Discussions
 
-Have questions or ideas? Join the conversation in [GitHub Discussions](https://github.com/moonmath-ai/lite-runner/discussions).
+Have questions or ideas? Join the conversation in [GitHub Discussions](https://github.com/moonmath-ai/LiteRunner/discussions).
 
 ### 🔧 Code Contributions
 
@@ -32,13 +32,13 @@ Ready to get started? Follow the development setup below.
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/moonmath-ai/lite-runner.git
+   git clone https://github.com/moonmath-ai/LiteRunner.git
    ```
 
 1. Set up the development environment:
 
    ```bash
-   cd lite-runner
+   cd LiteRunner
    uv run just prepare
    ```
 

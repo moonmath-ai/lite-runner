@@ -1,4 +1,4 @@
-"""lite-runner: Runner for generative models with local and W&B tracking.
+"""LiteRunner: Runner for generative models with local and W&B tracking.
 
 © 2026 MoonMath.ai. Some rights reserved.
 """

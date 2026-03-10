@@ -34,14 +34,14 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-# urls.Homepage = "https://lite-runner.readthedocs.io"
-urls.Source = "https://github.com/moonmath-ai/lite-runner"
-urls.Changelog = "https://github.com/moonmath-ai/lite-runner/blob/main/CHANGELOG.md"
-# urls.ReleaseNotes = "https://github.com/moonmath-ai/lite-runner/releases"
-# urls.Documentation = "https://lite-runner.readthedocs.io"
-urls.Issues = "https://github.com/moonmath-ai/lite-runner/issues"
+# urls.Homepage = "https://LiteRunner.readthedocs.io"
+urls.Source = "https://github.com/moonmath-ai/LiteRunner"
+urls.Changelog = "https://github.com/moonmath-ai/LiteRunner/blob/main/CHANGELOG.md"
+# urls.ReleaseNotes = "https://github.com/moonmath-ai/LiteRunner/releases"
+# urls.Documentation = "https://LiteRunner.readthedocs.io"
+urls.Issues = "https://github.com/moonmath-ai/LiteRunner/issues"
 # urls.Funding = "https://github.com/sponsors/moonmath-ai"
-# Discussions = "https://github.com/moonmath-ai/lite-runner/discussions"
+# Discussions = "https://github.com/moonmath-ai/LiteRunner/discussions"
 
 requires-python = ">=3.10"
 dependencies = [

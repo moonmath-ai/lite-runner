@@ -1,10 +1,10 @@
-site_name: lite-runner
-site_url: 'https://lite-runner.readthedocs.io/'
+site_name: LiteRunner
+site_url: 'https://LiteRunner.readthedocs.io/'
 site_author: MoonMath.ai
 site_description: Runner for generative models with local and W&B tracking.
 
-repo_name: 'moonmath-ai/lite-runner'
-repo_url: 'https://github.com/moonmath-ai/lite-runner'
+repo_name: 'moonmath-ai/LiteRunner'
+repo_url: 'https://github.com/moonmath-ai/LiteRunner'
 
 theme:
   name: material

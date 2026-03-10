@@ -12,7 +12,7 @@ jupyter_files: forbid
 license: MIT
 package_description: Runner for generative models with local and W&B tracking.
 package_name: lite_runner
-project_name: lite-runner
+project_name: LiteRunner
 python_min: 10
 user_email: tsvika@moonmath.ai
 user_name: MoonMath.ai
