@@ -29,7 +29,7 @@ Or as a uv [script dependency](https://docs.astral.sh/uv/guides/scripts/#declari
 
 ```python
 # /// script
-# dependencies = ["lite-runner @ git+https://github.com/tsvikas/lite-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/lite-runner"]
 # ///
 ```
 
@@ -39,7 +39,7 @@ Create a `run.py` for your model:
 
 ```python
 # /// script
-# dependencies = ["lite-runner @ git+https://github.com/tsvikas/lite-runner"]
+# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/lite-runner"]
 # ///
 from lite_runner import Runner, Param, Metric
 
@@ -215,7 +215,7 @@ Methods:
 | `ask_user(no_interactive=)`                  | Prompt for missing values                     |
 | `run(...)`                                   | Auto-calls any unapplied steps, then executes |
 
-`run()` accepts kwargs `dry_run`, `no_interactive`, `no_wandb`, `run_name` as alternatives to CLI flags.
+`run()` accepts kwargs `dry_run`, `min_free_space_gib`, `no_interactive`, `no_wandb`, `project`, `run_name` as alternatives to CLI flags.
 
 ## Built-in CLI flags
 

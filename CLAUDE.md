@@ -13,7 +13,7 @@ ruff format .                    # format
 ruff check .                     # lint
 ```
 
-Python >=3.11 required. Build backend is hatchling.
+Python >=3.10 required. Build backend is hatchling.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ Four core abstractions:
 - **`Metric`** — Regex pattern applied to stdout; last match wins.
   Stored in `wandb.run.summary`.
 - **`Runner`** — Orchestrator with an immutable pipeline API.
-  Each pipeline method returns a new Runner via `copy.copy`:
+  Each pipeline method returns a new Runner via `copy.deepcopy`:
   `parse_cli()` → `override()` → `resolve_defaults()` → `ask_user()`.
   `run()` auto-calls any steps not yet applied.
   Values are tracked in `param_values` with source tags in `param_sources`
@@ -48,12 +48,12 @@ The `UNSET` sentinel marks params the user explicitly skipped (typed `-` at prom
 ## Key Design Decisions
 
 - **Decoupled from models**: User writes a `run.py` per model that configures a `Runner`. The runner only knows about CLI wrapping, not model internals.
-- **Interactive-first**: Missing params trigger TUI prompts by default; `--no-interactive` or `run(interactive=False)` for CI/sweeps.
+- **Interactive-first**: Missing params trigger TUI prompts by default; `--no-interactive` or `run(no_interactive=True)` for CI/sweeps.
 - **Never-fail post-run**: Each post-run step catches exceptions and warns, ensuring W&B run always completes.
 
 ## Testing
 
-Tests are split across `tests/test_runner.py`, `tests/test_params.py`, `tests/test_backends.py`, and `tests/conftest.py`. W&B is mocked in integration tests.
+Tests are split across `tests/test_runner.py`, `tests/test_params.py`, `tests/test_backends.py`, `tests/test_.py`, and `tests/conftest.py`. W&B is mocked in integration tests.
 Tests cover: param validation, CLI parsing, value resolution, interactive prompts, command building, metric extraction, subprocess execution, output logging, and full run lifecycle.
 
 ## Keeping docs in sync
