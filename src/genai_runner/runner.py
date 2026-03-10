@@ -44,16 +44,17 @@ from .params import (
     Param,
 )
 
+PACKAGE_NAME = __name__.split(".")[0]
 RUNS_DIR = Path.home() / "genai_runs"
 
-logger = logging.getLogger(__name__.split(".")[0])
+logger = logging.getLogger(PACKAGE_NAME)
 
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _ensure_logging() -> None:
     """Set up a default handler if none configured (besides NullHandler)."""
-    root = logging.getLogger("genai_runner")
+    root = logging.getLogger(PACKAGE_NAME)
     if not any(h for h in root.handlers if not isinstance(h, logging.NullHandler)):
         handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(logging.Formatter("\033[36m%(name)s:\033[0m %(message)s"))
@@ -173,7 +174,7 @@ class Runner:
     def get_parser(self) -> argparse.ArgumentParser:
         """Build argparse parser with built-in flags and param flags."""
         parser = argparse.ArgumentParser(
-            description="genai_runner experiment launcher",
+            description="coda launcher with run tracking",
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         # Built-in flags — default=None so we can detect explicit usage

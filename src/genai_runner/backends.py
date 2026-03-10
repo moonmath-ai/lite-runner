@@ -196,7 +196,7 @@ class JsonBackend:
         )
 
 
-_dry_run_logger = logging.getLogger("genai_runner.dry_run")
+_dry_run_logger = logging.getLogger(f"{__name__.split('.')[0]}.dry_run")
 
 
 class DryRunBackend:
