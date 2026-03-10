@@ -46,9 +46,9 @@ if __name__ == "__main__":
 Then run it:
 
 ```bash
-python run.py --prompt "a cat walking"           # interactive TUI fills missing params
-python run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
-python run.py --prompt "a cat" --dry-run         # print command, don't run
+uv run run.py --prompt "a cat walking"           # interactive TUI fills missing params
+uv run run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
+uv run run.py --prompt "a cat" --dry-run         # print command, don't run
 ```
 
 ## What it does
