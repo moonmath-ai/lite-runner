@@ -45,9 +45,9 @@ urls.Issues = "https://github.com/moonmath-ai/lite-runner/issues"
 
 requires-python = ">=3.10"
 dependencies = [
-    "wandb",
-    "questionary",
-    "gitpython",
+    "wandb >=0.17",
+    "questionary >=2.0",
+    "gitpython >=3.1",
     "typing_extensions >=4.0",
 ]
 
