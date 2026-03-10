@@ -664,7 +664,7 @@ class Runner:
                 logger.warning("finish %s failed: %s", type(b).__name__, e)
 
         logger.info("Status: %s (exit code %s)", status, exit_code)
-        logger.info("Duration: %.1fs", duration)
+        logger.info("Duration: %s", datetime.timedelta(seconds=duration))
         logger.info("Output dir: %s", output_dir)
 
     # -----------------------------------------------------------------------
