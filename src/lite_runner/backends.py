@@ -19,6 +19,8 @@ import wandb
 from .params import UNSET, _log_as_from_type
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .params import Metric, Output, Param
 
 VideoFormat = Literal["gif", "mp4", "webm", "ogg"]
@@ -281,7 +283,29 @@ class DryRunBackend:
 # Collectors (collect_*: non-mutating) and preparers (prepare_*: create files)
 # ---------------------------------------------------------------------------
 
-_METRIC_CASTERS = {"float": float, "int": int}
+
+def _parse_timedelta(raw: str) -> float:
+    """Parse [[HH:]MM:]SS[.ddd] into total seconds as a float.
+
+    >>> _parse_timedelta("1:02:03.5")
+    3723.5
+    >>> _parse_timedelta("05:30")
+    330.0
+    >>> _parse_timedelta("42")
+    42.0
+    """
+    parts = raw.split(":")
+    seconds = 0.0
+    for part in parts:
+        seconds = seconds * 60 + float(part)
+    return seconds
+
+
+_METRIC_CASTERS: dict[str, Callable[[str], int | float]] = {
+    "float": float,
+    "int": int,
+    "timedelta": _parse_timedelta,
+}
 
 
 def collect_metrics(

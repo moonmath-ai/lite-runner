@@ -293,7 +293,9 @@ class Metric:
     Args:
         name: Metric name in W&B summary.
         pattern: Regex with one capture group.
-        type: "float", "int", or "str".  Determines how the captured value is stored.
+        type: "float", "int", "str", or "timedelta".  Determines how the
+            captured value is stored.  "timedelta" parses [[HH:]MM:]SS[.ddd]
+            into total seconds (float).
     """
 
     name: str
