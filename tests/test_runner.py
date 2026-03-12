@@ -13,7 +13,11 @@ from conftest import _FAKE_GIT_INFO, _make_runner, _mock_wb_run
 
 from lite_runner import UNSET, Metric, Param, Runner
 from lite_runner.backends import DryRunBackend, JsonBackend
-from lite_runner.runner import _collect_git_info, _interpolate_output
+from lite_runner.runner import (
+    _collect_git_info,
+    _interpolate_output,
+    warn_missing_input_paths,
+)
 
 # ---------------------------------------------------------------------------
 # CLI parsing (via parse_cli)
@@ -480,6 +484,75 @@ def test_interpolate_preserves_resolved_params(tmp_path: Path) -> None:
     assert result["out"] == f"{tmp_path}/video.mp4"
     assert result["prompt"] == "a cat"
     assert result["seed"] == 42
+
+
+# ---------------------------------------------------------------------------
+# Warn missing input paths
+# ---------------------------------------------------------------------------
+
+
+def test_warn_missing_input_path(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    params = [Param("config", type="path")]
+    values = {"config": "/no/such/file.yaml"}
+    warn_missing_input_paths(params, values, tmp_path)
+    assert "Input path does not exist" in caplog.text
+    assert "config" in caplog.text
+
+
+def test_warn_missing_input_path_skips_output_dir(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    params = [Param("out_video", type="path-video", value="$output/video.mp4")]
+    values = {"out_video": f"{tmp_path}/video.mp4"}
+    warn_missing_input_paths(params, values, tmp_path)
+    assert "Input path does not exist" not in caplog.text
+
+
+def test_warn_missing_input_path_skips_existing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    real_file = tmp_path / "real.txt"
+    real_file.write_text("hi")
+    params = [Param("config", type="path")]
+    values = {"config": str(real_file)}
+    warn_missing_input_paths(params, values, tmp_path / "output")
+    assert "Input path does not exist" not in caplog.text
+
+
+def test_warn_missing_input_path_skips_non_path_types(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    params = [Param("prompt", type="str")]
+    values = {"prompt": "/no/such/file"}
+    warn_missing_input_paths(params, values, tmp_path)
+    assert caplog.text == ""
+
+
+def test_warn_missing_input_path_type_list(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    params = [
+        Param(
+            "image",
+            type=["path-image", "float", "float"],
+            labels=["path", "start", "strength"],
+        ),
+    ]
+    values = {"image": ["/missing/photo.jpg", 0.0, 0.8]}
+    warn_missing_input_paths(params, values, tmp_path)
+    assert "Input path does not exist" in caplog.text
+    assert "/missing/photo.jpg" in caplog.text
+
+
+def test_warn_missing_input_path_skips_unset(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    params = [Param("config", type="path")]
+    values: dict[str, object] = {"config": UNSET}
+    warn_missing_input_paths(params, values, tmp_path)
+    assert caplog.text == ""
 
 
 # ---------------------------------------------------------------------------
