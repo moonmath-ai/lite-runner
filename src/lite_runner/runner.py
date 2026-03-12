@@ -538,11 +538,14 @@ class Runner:
         # Execute
         logger.info("Run started")
         if not flags.dry_run:
-            exit_code, duration, stdout_text, aborted = r.execute(cmd, output_dir)
+            exit_code, duration, stdout_text, stderr_text, aborted = r.execute(
+                cmd, output_dir
+            )
         else:
             exit_code = 0
             duration = 100
             stdout_text = "This is a dry run"
+            stderr_text = ""
             aborted = False
 
         logger.info("Run finished")
@@ -555,6 +558,7 @@ class Runner:
             exit_code,
             duration,
             stdout_text,
+            stderr_text,
             r.tags,
             aborted=aborted,
             dry_run=bool(flags.dry_run),
@@ -584,6 +588,7 @@ class Runner:
         exit_code: int,
         duration: float,
         stdout_text: str,
+        stderr_text: str,
         run_tags: list[str],
         *,
         aborted: bool = False,
@@ -610,7 +615,7 @@ class Runner:
         # Collect metrics
         metrics = []
         try:
-            metrics = collect_metrics(self.metrics, stdout_text)
+            metrics = collect_metrics(self.metrics, stdout_text + "\n" + stderr_text)
         except Exception as e:  # noqa: BLE001
             logger.warning("extract metrics failed: %s", e)
 
@@ -697,12 +702,15 @@ class Runner:
     # Subprocess execution
     # -----------------------------------------------------------------------
 
-    def execute(self, cmd: list[str], output_dir: Path) -> tuple[int, float, str, bool]:
+    def execute(
+        self, cmd: list[str], output_dir: Path
+    ) -> tuple[int, float, str, str, bool]:
         """Run subprocess, stream stdout/stderr to terminal and log files.
 
-        Returns (exit_code, duration_seconds, stdout_text, aborted).
+        Returns (exit_code, duration_seconds, stdout_text, stderr_text, aborted).
         """
         stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
         lock = threading.Lock()
 
         def stream_pipe(
@@ -711,7 +719,7 @@ class Runner:
             file_log: TextIO,
             *,
             prefix: str = "",
-            capture: bool = False,
+            capture_list: list[str] | None = None,
         ) -> None:
             while True:
                 chunk = pipe.read1(8192) if hasattr(pipe, "read1") else pipe.read(8192)
@@ -725,8 +733,8 @@ class Runner:
                 with lock:
                     log_combined.write(prefix + text if prefix else text)
                     log_combined.flush()
-                    if capture:
-                        stdout_lines.append(text)
+                    if capture_list is not None:
+                        capture_list.append(text)
             pipe.close()
 
         with ExitStack() as stack:
@@ -755,12 +763,12 @@ class Runner:
             t_out = threading.Thread(
                 target=stream_pipe,
                 args=(proc.stdout, sys.stdout, log_stdout),
-                kwargs={"capture": True},
+                kwargs={"capture_list": stdout_lines},
             )
             t_err = threading.Thread(
                 target=stream_pipe,
                 args=(proc.stderr, sys.stderr, log_stderr),
-                kwargs={"prefix": "[stderr] "},
+                kwargs={"prefix": "[stderr] ", "capture_list": stderr_lines},
             )
 
             aborted = False
@@ -788,7 +796,13 @@ class Runner:
             t_err.join()
             duration = time.monotonic() - start
 
-        return proc.returncode, duration, "".join(stdout_lines), aborted
+        return (
+            proc.returncode,
+            duration,
+            "".join(stdout_lines),
+            "".join(stderr_lines),
+            aborted,
+        )
 
 
 # ---------------------------------------------------------------------------

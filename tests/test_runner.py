@@ -579,12 +579,15 @@ def test_execute_captures_stdout_and_stderr(tmp_path: Path) -> None:
         "-c",
         "import sys; print('out'); print('err', file=sys.stderr)",
     ]
-    exit_code, duration, stdout_text, aborted = runner.execute(cmd, tmp_path)
+    exit_code, duration, stdout_text, stderr_text, aborted = runner.execute(
+        cmd, tmp_path
+    )
 
     assert exit_code == 0
     assert aborted is False
     assert duration > 0
     assert "out" in stdout_text
+    assert "err" in stderr_text
     assert (tmp_path / "stdout.log").read_text().strip() == "out"
     assert "err" in (tmp_path / "stderr.log").read_text()
     run_log = (tmp_path / "run.log").read_text()
@@ -594,7 +597,7 @@ def test_execute_captures_stdout_and_stderr(tmp_path: Path) -> None:
 
 def test_execute_nonzero_exit_code(tmp_path: Path) -> None:
     runner = Runner(command="echo")
-    exit_code, _, _, _ = runner.execute(
+    exit_code, _, _, _, _ = runner.execute(
         [sys.executable, "-c", "import sys; sys.exit(42)"], tmp_path
     )
     assert exit_code == 42
@@ -603,7 +606,7 @@ def test_execute_nonzero_exit_code(tmp_path: Path) -> None:
 def test_execute_env_vars_passed(tmp_path: Path) -> None:
     runner = Runner(command="echo", env={"MY_TEST_VAR": "hello123"})
     cmd = [sys.executable, "-c", "import os; print(os.environ['MY_TEST_VAR'])"]
-    exit_code, _, stdout_text, _ = runner.execute(cmd, tmp_path)
+    exit_code, _, stdout_text, _, _ = runner.execute(cmd, tmp_path)
     assert exit_code == 0
     assert "hello123" in stdout_text
 
@@ -616,7 +619,7 @@ def test_execute_env_none_removes_var(tmp_path: Path) -> None:
         "import os,json; print(json.dumps("
         "{'FOO':os.environ.get('FOO'),'PATH':os.environ.get('PATH')}))",
     ]
-    exit_code, _, stdout_text, _ = runner.execute(cmd, tmp_path)
+    exit_code, _, stdout_text, _, _ = runner.execute(cmd, tmp_path)
     assert exit_code == 0
     result = json.loads(stdout_text.strip().splitlines()[-1])
     assert result["FOO"] == "bar"
@@ -1064,6 +1067,7 @@ def test_post_run_aborted_status(tmp_path: Path) -> None:
             exit_code=-1,
             duration=1.0,
             stdout_text="",
+            stderr_text="",
             run_tags=["v1"],
             aborted=True,
         )
@@ -1096,9 +1100,49 @@ def test_post_run_failed_status_tags(tmp_path: Path) -> None:
             exit_code=1,
             duration=1.0,
             stdout_text="",
+            stderr_text="",
             run_tags=["v1"],
         )
     assert backend.metadata["tags"] == ["v1", "failed"]
+
+
+def test_post_run_extracts_metrics_from_stderr(tmp_path: Path) -> None:
+    """Metrics are extracted from both stdout and stderr."""
+    runner = Runner(
+        command="echo",
+        params=[],
+        metrics=[
+            Metric("from_out", pattern=r"out_val=([\d.]+)"),
+            Metric("from_err", pattern=r"err_val=([\d.]+)"),
+        ],
+    )
+    backend = JsonBackend(
+        project="test",
+        name="run",
+        group=None,
+        tags=[],
+        config={"meta/output_dir": str(tmp_path)},
+    )
+    (tmp_path / "stdout.log").write_text("")
+    (tmp_path / "stderr.log").write_text("")
+    (tmp_path / "run.log").write_text("")
+
+    with (
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+    ):
+        runner.post_run(
+            backends=[backend],
+            param_values={},
+            output_dir=tmp_path,
+            exit_code=0,
+            duration=1.0,
+            stdout_text="out_val=1.5",
+            stderr_text="err_val=2.5",
+            run_tags=[],
+        )
+    assert backend.metrics["from_out"] == 1.5
+    assert backend.metrics["from_err"] == 2.5
 
 
 # ---------------------------------------------------------------------------

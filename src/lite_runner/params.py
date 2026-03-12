@@ -288,7 +288,7 @@ class Output:
 
 @dataclass
 class Metric:
-    """A value to extract from stdout via regex.
+    """A value to extract from stdout/stderr via regex.
 
     Args:
         name: Metric name in W&B summary.

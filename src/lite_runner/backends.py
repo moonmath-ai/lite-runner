@@ -286,15 +286,15 @@ _METRIC_CASTERS = {"float": float, "int": int}
 
 def collect_metrics(
     metrics: list[Metric],
-    stdout_text: str,
+    output_text: str,
 ) -> list[tuple[str, object]]:
-    """Extract metrics from stdout via regex.
+    """Extract metrics from subprocess output via regex.
 
     Returns list of (name, value) pairs.
     """
     items: list[tuple[str, object]] = []
     for m in metrics:
-        matches = re.findall(m.pattern, stdout_text)
+        matches = re.findall(m.pattern, output_text)
         if not matches:
             continue
         raw = matches[-1]  # last match wins
