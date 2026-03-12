@@ -23,7 +23,7 @@ from typing import IO, TYPE_CHECKING, TextIO
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 import git
 
@@ -512,6 +512,9 @@ class Runner:
         # Interpolate $output in param values
         interpolated_params = _interpolate_output(r.param_values, output_dir)
 
+        # Warn about non-existent input paths (not under $output)
+        warn_missing_input_paths(r.params, interpolated_params, output_dir)
+
         # Collect input files (log_when == "before")
         pre_run_files.extend(
             collect_param_files(
@@ -834,6 +837,29 @@ def _interpolate_output(
         else _subst_output(v, out)
         for k, v in params.items()
     }
+
+
+def warn_missing_input_paths(
+    params: list[Param],
+    interpolated_params: Mapping[str, object],
+    output_dir: Path,
+) -> None:
+    """Log a warning for each input path param whose file doesn't exist."""
+    out_prefix = str(output_dir)
+    for p in params:
+        val = interpolated_params.get(p.name)
+        if val is UNSET or val is None:
+            continue
+        types = p.type_list
+        values = val if isinstance(val, list) else [val]
+        for t, v in zip(types, values, strict=False):
+            if not t.startswith("path"):
+                continue
+            s = str(v)
+            if s.startswith(out_prefix):
+                continue
+            if not Path(s).exists():
+                logger.warning("Input path does not exist: %s (param '%s')", s, p.name)
 
 
 def _collect_git_info() -> dict[str, object]:
