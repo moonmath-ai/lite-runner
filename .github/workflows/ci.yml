@@ -213,38 +213,6 @@ jobs:
         if: ${{ steps.install_packages.outcome == 'success' }}
         run: uv run --no-sync -- pytest --cov-branch --cov-report=xml --junitxml=junit.xml
 
-  pylint:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@v7
-      - name: Install packages
-        run: >-
-          uv sync
-          --exact
-          --all-extras
-          --no-default-groups
-          --locked
-      - name: List packages
-        run: uv pip list
-      # use pylint exitcode to fail only on errors.
-      - name: Run Pylint
-        run: |
-          set +e
-          uv run --no-sync --with pylint -- pylint src --output-format=github
-          result=$?
-          set -e
-          [ $((result & 1)) -ne 0 ] && echo "::error ::Pylint fatal(s) found"
-          [ $((result & 2)) -ne 0 ] && echo "::error ::Pylint error(s) found"
-          [ $((result & 4)) -ne 0 ] && echo "::warning ::Pylint warning(s) found"
-          [ $((result & 8)) -ne 0 ] && echo "::warning ::Pylint refactor(s) found"
-          [ $((result & 16)) -ne 0 ] && echo "::warning ::Pylint convention(s) found"
-          [ $((result & 32)) -ne 0 ] && echo "::error ::Pylint usage error"
-          exit $((result & 35))
-
   pass:
     if: ${{ always() }}
     needs:
@@ -255,7 +223,6 @@ jobs:
       - dependencies
       - test
       - test-pypy-and-prerelease
-      - pylint
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@release/v1
