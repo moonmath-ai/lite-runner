@@ -1,5 +1,6 @@
 """Tests for lite_runner.runner."""
 
+import hashlib
 import json
 import re
 import sys
@@ -1104,6 +1105,53 @@ def test_post_run_failed_status_tags(tmp_path: Path) -> None:
             run_tags=["v1"],
         )
     assert backend.metadata["tags"] == ["v1", "failed"]
+
+
+def test_post_run_logs_file_hashes(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Post-run logs sha256 hashes for param output files only."""
+    video_path = tmp_path / "video.mp4"
+    video_path.write_bytes(b"fake video content")
+    expected_hash = hashlib.sha256(b"fake video content").hexdigest()
+
+    runner = Runner(
+        command="echo",
+        params=[
+            Param("out", value=str(video_path), type="path-video", log_when="after"),
+        ],
+        metrics=[],
+    )
+    backend = DryRunBackend(project="test", name="run", group=None, tags=[], config={})
+
+    for name in ("stdout.log", "stderr.log", "run.log"):
+        (tmp_path / name).write_text("")
+
+    with (
+        caplog.at_level("INFO", logger="lite_runner"),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+    ):
+        runner.post_run(
+            backends=[backend],
+            param_values={"out": str(video_path)},
+            output_dir=tmp_path,
+            exit_code=0,
+            duration=1.0,
+            stdout_text="",
+            stderr_text="",
+            run_tags=[],
+        )
+
+    # Param output file hash is logged
+    assert any(
+        expected_hash in msg and str(video_path) in msg for msg in caplog.messages
+    )
+
+    # Run logs are NOT hashed
+    for name in ("stdout.log", "stderr.log", "run.log"):
+        log_hash = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+        assert not any(log_hash in msg and name in msg for msg in caplog.messages)
 
 
 def test_post_run_extracts_metrics_from_stderr(tmp_path: Path) -> None:
