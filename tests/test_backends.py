@@ -519,6 +519,32 @@ def test_metric_int() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Metric timedelta type
+# ---------------------------------------------------------------------------
+
+
+def test_metric_timedelta_hms() -> None:
+    """Metric with type='timedelta' parses HH:MM:SS.ddd to seconds."""
+    metrics = [Metric("elapsed", pattern=r"time=([\d:.]+)", type="timedelta")]
+    items = collect_metrics(metrics, "time=1:02:03.5")
+    assert items == [("elapsed", 3723.5)]
+
+
+def test_metric_timedelta_ms() -> None:
+    """Metric with type='timedelta' parses MM:SS to seconds."""
+    metrics = [Metric("elapsed", pattern=r"time=([\d:.]+)", type="timedelta")]
+    items = collect_metrics(metrics, "time=05:30")
+    assert items == [("elapsed", 330.0)]
+
+
+def test_metric_timedelta_seconds_only() -> None:
+    """Metric with type='timedelta' parses bare SS to seconds."""
+    metrics = [Metric("elapsed", pattern=r"time=([\d:.]+)", type="timedelta")]
+    items = collect_metrics(metrics, "time=42.75")
+    assert items == [("elapsed", 42.75)]
+
+
+# ---------------------------------------------------------------------------
 # create_repo_archive / create_repo_diff
 # ---------------------------------------------------------------------------
 
