@@ -18,9 +18,9 @@ import time
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, TextIO
+from typing import IO, TYPE_CHECKING, ClassVar, TextIO
 
-from typing_extensions import Self
+from typing_extensions import Self, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -55,12 +55,31 @@ logger = logging.getLogger(PACKAGE_NAME)
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+class ColorFormatter(logging.Formatter):
+    """Formatter that colors the ``name:`` prefix by log level."""
+
+    COLORS: ClassVar[dict[int, str]] = {
+        logging.DEBUG: "\033[36m",  # cyan
+        logging.INFO: "\033[36m",  # cyan
+        logging.WARNING: "\033[33m",  # yellow
+        logging.ERROR: "\033[31m",  # red
+        logging.CRITICAL: "\033[1;31m",  # bold red
+    }
+    RESET = "\033[0m"
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        color = self.COLORS.get(record.levelno, self.RESET)
+        formatted = super().format(record)
+        return f"{color}{record.name}:{self.RESET} {formatted}"
+
+
 def _ensure_logging() -> None:
     """Set up a default handler if none configured (besides NullHandler)."""
     root = logging.getLogger(PACKAGE_NAME)
     if not any(h for h in root.handlers if not isinstance(h, logging.NullHandler)):
         handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter("\033[36m%(name)s:\033[0m %(message)s"))
+        handler.setFormatter(ColorFormatter())
         root.addHandler(handler)
         root.setLevel(logging.INFO)
 
