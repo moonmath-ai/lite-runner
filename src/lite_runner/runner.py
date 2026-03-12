@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime
+import hashlib
 import logging
 import os
 import shlex
@@ -649,6 +650,14 @@ class Runner:
                 files.extend(collector())
             except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s failed: %s", step_name, e)
+
+        # Log file hashes
+        for f in files:
+            try:
+                sha = hashlib.sha256(f.path.read_bytes()).hexdigest()
+                logger.info("%s  %s", sha, f.path)
+            except Exception as e:  # noqa: BLE001, PERF203
+                logger.warning("hash %s failed: %s", f.path, e)
 
         # Send to each backend
         for b in backends:
