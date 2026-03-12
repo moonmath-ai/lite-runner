@@ -622,16 +622,24 @@ class Runner:
 
         # Collect/prepare files
         files = []
+        try:
+            files.extend(
+                collect_param_files(
+                    self.params, param_values, when="after", dry_run=dry_run
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("output files failed: %s", e)
+
+        # Log file hashes for param output files
+        for f in files:
+            try:
+                sha = hashlib.sha256(f.path.read_bytes()).hexdigest()
+                logger.info("%s  %s", sha, f.path)
+            except Exception as e:  # noqa: BLE001, PERF203
+                logger.warning("hash %s failed: %s", f.path, e)
+
         file_steps: list[tuple[str, Callable[[], list[LogFile]]]] = [
-            (
-                "output files",
-                lambda: collect_param_files(
-                    self.params,
-                    param_values,
-                    when="after",
-                    dry_run=dry_run,
-                ),
-            ),
             (
                 "extra outputs",
                 lambda: prepare_extra_outputs(
@@ -650,14 +658,6 @@ class Runner:
                 files.extend(collector())
             except Exception as e:  # noqa: BLE001, PERF203
                 logger.warning("%s failed: %s", step_name, e)
-
-        # Log file hashes
-        for f in files:
-            try:
-                sha = hashlib.sha256(f.path.read_bytes()).hexdigest()
-                logger.info("%s  %s", sha, f.path)
-            except Exception as e:  # noqa: BLE001, PERF203
-                logger.warning("hash %s failed: %s", f.path, e)
 
         # Send to each backend
         for b in backends:
