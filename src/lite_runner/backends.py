@@ -11,7 +11,7 @@ import tarfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
 import git
 import wandb
@@ -128,8 +128,12 @@ class WandbBackend:
         """Merge updates into the W&B run config."""
         self.run.config.update(updates)  # type: ignore[no-untyped-call]
 
+    _LOCAL_ONLY_KEYS: ClassVar[frozenset[str]] = frozenset({"code", "code-diff"})
+
     def log_file(self, path: Path, log_as: str, key: str) -> None:
         """Log a file to W&B as artifact, video, image, or text."""
+        if key in self._LOCAL_ONLY_KEYS:
+            return
         if log_as == "artifact":
             self.run.log_artifact(path, name=f"{key}-{self.run.id}", type=key)
         elif log_as == "video":
