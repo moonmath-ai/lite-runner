@@ -1008,6 +1008,32 @@ def test_full_run_no_wandb(tmp_path: Path) -> None:
     assert run_info["config"]["wandb/url"] == "(no wandb)"
 
 
+def test_input_files_copied_to_output_dir(tmp_path: Path) -> None:
+    """Input files (log_when=before) are copied to output_dir/input/."""
+    # Create a fake input image
+    img = tmp_path / "photo.jpg"
+    img.write_bytes(b"fake-image-data")
+
+    runner = Runner(
+        command=f"{sys.executable} -c pass",
+        params=[Param("img", type="path-image", value=str(img))],
+    )
+
+    with (
+        patch("lite_runner.runner._collect_git_info", return_value=_FAKE_GIT_INFO),
+        patch("lite_runner.backends.create_repo_archive", return_value=None),
+        patch("lite_runner.backends.create_repo_diff", return_value=None),
+        patch("lite_runner.runner.RUNS_DIR", tmp_path / "lite_runs"),
+    ):
+        runner.run(no_wandb=True, no_interactive=True)
+
+    project_dir = tmp_path / "lite_runs" / "test-repo"
+    output_dir = next(project_dir.iterdir())
+    copied = output_dir / "input" / "photo.jpg"
+    assert copied.exists()
+    assert copied.read_bytes() == b"fake-image-data"
+
+
 def test_full_run_with_wandb_also_writes_run_info(tmp_path: Path) -> None:
     """Even with W&B enabled, run_info.json is written."""
     mock_wb = MagicMock()
