@@ -77,7 +77,7 @@ class Param:
     Args:
         name: Parameter name, used as argparse dest (underscored)
             and CLI flag (hyphenated).
-        type: A ParamType or list of ParamType for multi-value
+        type: A ParamType or sequence of ParamType for multi-value
             flags.  Single: "str", "int", "float", "bool", "path",
             "path-image", "path-video", "path-artifact", "path-text".
             List: e.g. ["path-image", "float", "float"] for
