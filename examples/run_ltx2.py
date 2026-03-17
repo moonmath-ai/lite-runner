@@ -9,7 +9,7 @@
 
 from huggingface_hub import snapshot_download
 
-from lite_runner import Metric, Param, Runner
+from lite_runner import UNSET, Metric, Param, Runner
 
 LTX2_DIR = snapshot_download("Lightricks/LTX-2", local_files_only=True)
 GEMMA_DIR = snapshot_download(
@@ -30,7 +30,7 @@ runner = Runner(
             "image",
             type=["path-image", "int", "float"],
             labels=["path", "frame", "strength"],
-            default=["images/surfing-cat.jpg", 0, 0.8],
+            default=[UNSET, 0, 0.8],
             help="Input image conditioning",
         ),
         # --- Output ---
