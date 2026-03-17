@@ -493,9 +493,7 @@ def test_interpolate_expands_tilde(tmp_path: Path) -> None:
 
 
 def test_interpolate_expands_tilde_in_list(tmp_path: Path) -> None:
-    result = _interpolate_output(
-        {"img": ["~/images/photo.jpg", 0, 0.8]}, tmp_path
-    )
+    result = _interpolate_output({"img": ["~/images/photo.jpg", 0, 0.8]}, tmp_path)
     img = result["img"]
     assert isinstance(img, list)
     assert img[0] == str(Path("~/images/photo.jpg").expanduser())
