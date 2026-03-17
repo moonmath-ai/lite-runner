@@ -45,6 +45,7 @@ from .params import (
     Metric,
     Output,
     Param,
+    is_seq,
 )
 
 PACKAGE_NAME = __name__.split(".")[0]
@@ -725,7 +726,7 @@ class Runner:
             cmd.append(p.flag)
             if p.type == "bool":
                 continue
-            val_list = val if isinstance(val, list) else [val]
+            val_list = val if is_seq(val) else [val]
             cmd.extend(str(v) for v in val_list)
         return cmd
 
@@ -851,9 +852,7 @@ def _interpolate_output(
     """Return a copy of *params* with $output replaced in string values."""
     out = str(output_dir)
     return {
-        k: [_subst_output(x, out) for x in v]
-        if isinstance(v, list)
-        else _subst_output(v, out)
+        k: [_subst_output(x, out) for x in v] if is_seq(v) else _subst_output(v, out)
         for k, v in params.items()
     }
 
@@ -870,7 +869,7 @@ def warn_missing_input_paths(
         if val is UNSET or val is None:
             continue
         types = p.type_list
-        values = val if isinstance(val, list) else [val]
+        values = val if is_seq(val) else [val]
         for t, v in zip(types, values, strict=False):
             if not t.startswith("path"):
                 continue
