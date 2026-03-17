@@ -226,7 +226,8 @@ class Param:
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name
-        default_str = str(default) if default is not None else ""
+        is_empty = default is None or isinstance(default, _Unset)
+        default_str = "" if is_empty else str(default)
         if self.choices:
             choices = [_SKIP_INPUT, *self.choices]
             default_choice = str(default) if default is not None else None
@@ -257,7 +258,7 @@ class Param:
         defaults = default if is_seq(default) else [None] * nargs
         parts = []
         for label, etype, d in zip(labels, element_types, defaults, strict=True):
-            default_str = str(d) if d is not None else ""
+            default_str = str(d) if d is not None and not isinstance(d, _Unset) else ""
             if etype.startswith("path"):
                 widget = questionary.path(f"{self.name} {label}:", default=default_str)
             else:
