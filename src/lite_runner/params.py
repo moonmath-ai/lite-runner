@@ -53,6 +53,13 @@ def is_seq(obj: object) -> TypeGuard[Sequence[Any]]:
 _SKIP_INPUT = "-"
 
 
+def _contains_unset(obj: object) -> bool:
+    """Return True if *obj* is UNSET or is a sequence containing an UNSET element."""
+    if isinstance(obj, _Unset):
+        return True
+    return is_seq(obj) and any(isinstance(x, _Unset) for x in obj)
+
+
 class _Unset:
     """Param value skipped by user during interactive prompting."""
 
