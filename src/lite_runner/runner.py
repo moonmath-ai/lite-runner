@@ -536,14 +536,23 @@ class Runner:
         warn_missing_input_paths(r.params, interpolated_params, output_dir)
 
         # Collect input files (log_when == "before")
-        pre_run_files.extend(
-            collect_param_files(
-                r.params,
-                interpolated_params,
-                when="before",
-                dry_run=bool(flags.dry_run),
-            )
+        input_files = collect_param_files(
+            r.params,
+            interpolated_params,
+            when="before",
+            dry_run=bool(flags.dry_run),
         )
+        pre_run_files.extend(input_files)
+
+        # Copy input files to output dir for local reproducibility
+        if not flags.dry_run and input_files:
+            input_dir = output_dir / "input"
+            input_dir.mkdir(exist_ok=True)
+            for f in input_files:
+                try:
+                    shutil.copy2(f.path, input_dir / f.path.name)
+                except Exception as e:  # noqa: BLE001, PERF203
+                    logger.warning("copy input file %s failed: %s", f.path, e)
 
         # Log pre-run files
         for b in backend_list:
