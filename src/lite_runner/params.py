@@ -53,6 +53,13 @@ def is_seq(obj: object) -> TypeGuard[Sequence[Any]]:
 _SKIP_INPUT = "-"
 
 
+def _contains_unset(obj: object) -> bool:
+    """Return True if *obj* is UNSET or is a sequence containing an UNSET element."""
+    if isinstance(obj, _Unset):
+        return True
+    return is_seq(obj) and any(isinstance(x, _Unset) for x in obj)
+
+
 class _Unset:
     """Param value skipped by user during interactive prompting."""
 
@@ -226,7 +233,8 @@ class Param:
 
     def _prompt_single(self, default: object = None) -> int | float | str | _Unset:
         label = self.help or self.name
-        default_str = str(default) if default is not None else ""
+        is_empty = default is None or isinstance(default, _Unset)
+        default_str = "" if is_empty else str(default)
         if self.choices:
             choices = [_SKIP_INPUT, *self.choices]
             default_choice = str(default) if default is not None else None
@@ -257,7 +265,7 @@ class Param:
         defaults = default if is_seq(default) else [None] * nargs
         parts = []
         for label, etype, d in zip(labels, element_types, defaults, strict=True):
-            default_str = str(d) if d is not None else ""
+            default_str = str(d) if d is not None and not isinstance(d, _Unset) else ""
             if etype.startswith("path"):
                 widget = questionary.path(f"{self.name} {label}:", default=default_str)
             else:

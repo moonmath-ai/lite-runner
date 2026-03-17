@@ -434,6 +434,113 @@ def test_build_command_skips_unset_after_copy() -> None:
     assert "<unset>" not in " ".join(cmd)
 
 
+def test_build_command_skips_nargs_list_with_unset() -> None:
+    """A nargs param whose list contains UNSET is omitted from the command."""
+    runner = _make_runner(
+        params=[
+            Param("prompt"),
+            Param("img", type=["path-image", "float"], labels=["path", "strength"]),
+        ],
+    )
+    cmd = runner.build_command({"prompt": "a cat", "img": [UNSET, 0.5]})
+    assert cmd == ["echo", "hello", "--prompt", "a cat"]
+    assert "<unset>" not in " ".join(cmd)
+
+
+def test_resolve_defaults_preserves_list_with_unset_element() -> None:
+    """A list default containing UNSET is kept as-is for prompting."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "img",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+                default=[UNSET, 0.5],
+            ),
+        ],
+    )
+    r = runner.resolve_defaults()
+    assert r.param_values["img"] == [UNSET, 0.5]
+
+
+def test_resolve_defaults_preserves_unset_default_for_nargs() -> None:
+    """UNSET as the entire default for a nargs param is preserved."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "img",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+                default=UNSET,
+            ),
+        ],
+    )
+    r = runner.resolve_defaults()
+    assert r.param_values["img"] is UNSET
+
+
+def test_nargs_list_with_unset_non_interactive_skips_flag() -> None:
+    """Non-interactive: nargs default [UNSET, 0.5] omits the flag entirely."""
+    runner = _make_runner(
+        params=[
+            Param("prompt"),
+            Param(
+                "img",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+                default=[UNSET, 0.5],
+            ),
+        ],
+    )
+    r = runner.parse_cli(["--prompt", "test", "--no-interactive"])
+    r = r.resolve_defaults()
+    r = r.ask_user()
+    cmd = r.build_command(r.param_values)
+    assert "--img" not in cmd
+    assert "<unset>" not in " ".join(cmd)
+
+
+def test_prompt_nargs_user_empties_one_element_returns_unset() -> None:
+    """If user clears one element in a nargs prompt, whole param becomes UNSET."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "img",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+                default=["/fake/path/img.png", 0.5],
+            ),
+        ],
+    )
+    with patch("lite_runner.params.questionary") as mock_q:
+        # User clears the path to empty
+        mock_q.path.return_value.ask.return_value = ""
+        r = runner.ask_user()
+    assert r.param_values["img"] is UNSET
+
+
+def test_prompt_nargs_with_partial_unset_default_preserves_other() -> None:
+    """Interactive: default=[UNSET, 0.5] shows '' for path, '0.5' for strength."""
+    runner = _make_runner(
+        params=[
+            Param(
+                "img",
+                type=["path-image", "float"],
+                labels=["path", "strength"],
+                default=[UNSET, 0.5],
+            ),
+        ],
+    )
+    with patch("lite_runner.params.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = "/fake/path/img.png"
+        mock_q.text.return_value.ask.return_value = "0.8"
+        r = runner.ask_user()
+    # Verify the UNSET element showed "" while 0.5 showed "0.5"
+    mock_q.path.assert_called_once_with("img path:", default="")
+    mock_q.text.assert_called_once_with("img strength:", default="0.5")
+    assert r.param_values["img"] == ["/fake/path/img.png", 0.8]
+
+
 def test_config_logs_unset_as_marker() -> None:
     """Skipped params appear as '<unset>' in the config dict."""
     resolved = {"prompt": "test", "mode": UNSET}

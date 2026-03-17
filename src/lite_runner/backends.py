@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 import git
 import wandb
 
-from .params import UNSET, _log_as_from_type, is_seq
+from .params import _contains_unset, _log_as_from_type, is_seq
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -350,7 +350,7 @@ def collect_param_files(
         if p.log_when != when:
             continue
         val = param_values.get(p.name)
-        if val is None or val is UNSET:
+        if val is None or _contains_unset(val):
             continue
         values = val if is_seq(val) else [val]
         for v, t in zip(values, p.type_list, strict=True):

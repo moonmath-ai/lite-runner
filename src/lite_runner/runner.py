@@ -41,10 +41,10 @@ from .backends import (
     prepare_extra_outputs,
 )
 from .params import (
-    UNSET,
     Metric,
     Output,
     Param,
+    _contains_unset,
     is_seq,
 )
 
@@ -462,7 +462,7 @@ class Runner:
         # Config
         config: dict[str, object] = {}
         for k, v in r.param_values.items():
-            config[f"param/{k}"] = "<unset>" if v is UNSET else v
+            config[f"param/{k}"] = "<unset>" if _contains_unset(v) else v
         for k, v in git_info.items():
             config[f"git/{k}"] = v
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -730,7 +730,7 @@ class Runner:
         cmd: list[str] = self.command[:]
         for p in self.params:
             val = param_values.get(p.name)
-            if val is UNSET:
+            if _contains_unset(val):
                 continue
             if val is None or p.flag is None:
                 msg = f"Param {p.name!r} missing value or flag in build_command"
@@ -885,7 +885,7 @@ def warn_missing_input_paths(
     out_prefix = str(output_dir)
     for p in params:
         val = interpolated_params.get(p.name)
-        if val is UNSET or val is None:
+        if val is None or _contains_unset(val):
             continue
         types = p.type_list
         values = val if is_seq(val) else [val]

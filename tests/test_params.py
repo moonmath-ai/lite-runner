@@ -290,6 +290,28 @@ def test_unset_repr() -> None:
     assert repr(UNSET) == "<unset>"
 
 
+def test_prompt_with_unset_default_shows_empty() -> None:
+    """When a param's current value is UNSET, the prompt should prefill ''."""
+    p = Param("image_path", type="path-image")
+    with patch("lite_runner.params.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = ""
+        result = p.ask(default=UNSET)
+    mock_q.path.assert_called_once_with("image_path:", default="")
+    assert result is UNSET
+
+
+def test_prompt_nargs_with_unset_default_shows_empty() -> None:
+    """When a nargs param's current value is UNSET, each element prefills ''."""
+    p = Param("img", type=["path-image", "float"], labels=["path", "strength"])
+    with patch("lite_runner.params.questionary") as mock_q:
+        mock_q.path.return_value.ask.return_value = "/fake/path/img.png"
+        mock_q.text.return_value.ask.return_value = "0.5"
+        result = p.ask(default=UNSET)
+    mock_q.path.assert_called_once_with("img path:", default="")
+    mock_q.text.assert_called_once_with("img strength:", default="")
+    assert result == ["/fake/path/img.png", 0.5]
+
+
 def test_unset_copy() -> None:
     assert copy(UNSET) is UNSET
 
