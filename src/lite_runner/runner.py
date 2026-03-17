@@ -560,7 +560,12 @@ class Runner:
         logger.info("Command:\n%s", shlex.join(cmd))
 
         # Execute
-        logger.info("Run started")
+        logger.info(
+            "Run started at %s",
+            datetime.datetime.now(tz=datetime.timezone.utc)
+            .astimezone()
+            .strftime("%H:%M:%S %Z"),
+        )
         if not flags.dry_run:
             exit_code, duration, stdout_text, stderr_text, aborted = r.execute(
                 cmd, output_dir
