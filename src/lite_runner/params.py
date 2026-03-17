@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
-
-from typing_extensions import override
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from typing import Any, Literal, TypeGuard
 
 import questionary
+from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +44,11 @@ def _log_as_from_type(t: str) -> str | None:
     return None
 
 
+def is_seq(obj: object) -> TypeGuard[Sequence[Any]]:
+    """Check whether *obj* is a non-string sequence (list, tuple, etc.)."""
+    return isinstance(obj, Sequence) and not isinstance(obj, str)
+
+
 # Sentinel for params the user explicitly skipped (typed '-' at the prompt).
 _SKIP_INPUT = "-"
 
@@ -75,7 +77,7 @@ class Param:
     Args:
         name: Parameter name, used as argparse dest (underscored)
             and CLI flag (hyphenated).
-        type: A ParamType or list of ParamType for multi-value
+        type: A ParamType or sequence of ParamType for multi-value
             flags.  Single: "str", "int", "float", "bool", "path",
             "path-image", "path-video", "path-artifact", "path-text".
             List: e.g. ["path-image", "float", "float"] for
@@ -101,7 +103,7 @@ class Param:
     """
 
     name: str
-    type: ParamType | list[ParamType] = "str"
+    type: ParamType | Sequence[ParamType] = "str"
     default: object = None
     choices: list[str] | None = None
     help: str = ""
@@ -120,7 +122,7 @@ class Param:
             if t not in _PARAM_TYPE_MAP:
                 msg = f"Unknown param type '{t}' for param '{self.name}'"
                 raise ValueError(msg)
-            if t == "bool" and isinstance(self.type, list):
+            if t == "bool" and is_seq(self.type):
                 msg = (
                     "'bool' cannot appear in a multi-value"
                     f" type list for param '{self.name}'"
@@ -143,13 +145,17 @@ class Param:
         """Check whether $output appears anywhere in self.value."""
         if self.value is None:
             return False
-        values = self.value if isinstance(self.value, list) else [self.value]
+        values = self.value if is_seq(self.value) else [self.value]
         return any("$output" in str(v) for v in values)
 
     @property
     def type_list(self) -> list[str]:
         """Types as a list -- single-value wrapped, multi-value as-is."""
-        return list(self.type) if isinstance(self.type, list) else [self.type]
+        t = self.type
+        if is_seq(t):
+            return list(t)
+        assert isinstance(t, str)  # noqa: S101
+        return [t]
 
     @property
     def dest(self) -> str:
@@ -159,7 +165,7 @@ class Param:
     @property
     def nargs(self) -> int | None:
         """Number of values for multi-value params, None for single-value."""
-        return len(self.type) if isinstance(self.type, list) else None
+        return len(self.type) if is_seq(self.type) else None
 
     @property
     def is_fixed(self) -> bool:
@@ -248,7 +254,7 @@ class Param:
         assert nargs is not None, "_prompt_nargs called without nargs"  # noqa: S101
         labels = self.labels or [f"{self.name}[{i}]" for i in range(nargs)]
         element_types = self.type_list
-        defaults = default if isinstance(default, list) else [None] * nargs
+        defaults = default if is_seq(default) else [None] * nargs
         parts = []
         for label, etype, d in zip(labels, element_types, defaults, strict=True):
             default_str = str(d) if d is not None else ""
