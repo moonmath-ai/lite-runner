@@ -848,7 +848,12 @@ class Runner:
 
 
 def _subst_output(v: object, out: str) -> object:
-    return v.replace("$output", out) if isinstance(v, str) else v
+    if isinstance(v, str):
+        v = v.replace("$output", out)
+        if v.startswith("~"):
+            v = str(Path(v).expanduser())
+        return v
+    return v
 
 
 def _interpolate_output(
