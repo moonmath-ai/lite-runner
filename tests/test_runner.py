@@ -486,6 +486,20 @@ def test_interpolate_preserves_resolved_params(tmp_path: Path) -> None:
     assert result["seed"] == 42
 
 
+def test_interpolate_expands_tilde(tmp_path: Path) -> None:
+    result = _interpolate_output({"img": "~/images/photo.jpg"}, tmp_path)
+    assert result["img"] == str(Path("~/images/photo.jpg").expanduser())
+    assert "~" not in str(result["img"])
+
+
+def test_interpolate_expands_tilde_in_list(tmp_path: Path) -> None:
+    result = _interpolate_output({"img": ["~/images/photo.jpg", 0, 0.8]}, tmp_path)
+    img = result["img"]
+    assert isinstance(img, list)
+    assert img[0] == str(Path("~/images/photo.jpg").expanduser())
+    assert img[1:] == [0, 0.8]
+
+
 # ---------------------------------------------------------------------------
 # Warn missing input paths
 # ---------------------------------------------------------------------------
