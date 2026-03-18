@@ -108,9 +108,10 @@ test-lowest python:
 
 # Create a release commit
 release version: (_assert-legal-version version) _check
-  sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [{{version}}] - $(date +%Y-%m-%d)/" CHANGELOG.md
-  sed -i -E "s|^\[unreleased\]: (https://github\.com/[^/]+/[^/]+)/compare/(.+)\.\.\.HEAD|[{{version}}]: \1/compare/\2...v{{version}}\n[unreleased]: \1/compare/v{{version}}...HEAD|" CHANGELOG.md
-  sed -i -E "s|^\[unreleased\]: (https://github\.com/[^/]+/[^/]+)/releases/tag/HEAD|[{{version}}]: \1/releases/tag/v{{version}}\n[unreleased]: \1/compare/v{{version}}...HEAD|" CHANGELOG.md
+  sed -i.bak "s/## \[Unreleased\]/## [Unreleased]\n\n## [{{version}}] - $(date +%Y-%m-%d)/" CHANGELOG.md
+  sed -i.bak -E "s|^\[unreleased\]: (https://github\.com/[^/]+/[^/]+)/compare/(.+)\.\.\.HEAD|[{{version}}]: \1/compare/\2...v{{version}}\n[unreleased]: \1/compare/v{{version}}...HEAD|" CHANGELOG.md
+  sed -i.bak -E "s|^\[unreleased\]: (https://github\.com/[^/]+/[^/]+)/releases/tag/HEAD|[{{version}}]: \1/releases/tag/v{{version}}\n[unreleased]: \1/compare/v{{version}}...HEAD|" CHANGELOG.md
+  rm -f CHANGELOG.md.bak
   git add CHANGELOG.md
   git commit -m "🔖 Release v{{version}}"
   just _tag-skip-check {{version}} HEAD
