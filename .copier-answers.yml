@@ -6,7 +6,7 @@ format_tool: ruff
 get_package_version_from_vcs: true
 github_user: moonmath-ai
 in_codecov: true
-in_pypi: false
+in_pypi: true
 in_rtd: false
 jupyter_files: forbid
 license: MIT

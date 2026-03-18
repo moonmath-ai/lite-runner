@@ -2,6 +2,10 @@
 
 [![Tests][tests-badge]][tests-link]
 [![codecov][codecov-badge]][codecov-link]
+[![PyPI version][pypi-version-badge]][pypi-link]
+[![PyPI platforms][pypi-platforms-badge]][pypi-link]
+[![Total downloads][pepy-badge]][pepy-link]
+\
 [![Made Using tsvikas/python-template][template-badge]][template-link]
 [![GitHub Discussion][github-discussions-badge]][github-discussions-link]
 [![PRs Welcome][prs-welcome-badge]][prs-welcome-link]
@@ -22,7 +26,7 @@ Create a `run.py` for your model:
 ```python
 #!/usr/bin/env -S uv run
 # /// script
-# dependencies = ["lite-runner @ git+https://github.com/moonmath-ai/LiteRunner"]
+# dependencies = ["lite-runner"]
 # ///
 from lite_runner import Runner, Param, Metric
 
@@ -232,8 +236,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guideline.
 [codecov-link]: https://codecov.io/gh/moonmath-ai/LiteRunner
 [github-discussions-badge]: https://img.shields.io/static/v1?label=Discussions&message=Ask&color=blue&logo=github
 [github-discussions-link]: https://github.com/moonmath-ai/LiteRunner/discussions
+[pepy-badge]: https://img.shields.io/pepy/dt/lite-runner
+[pepy-link]: https://pepy.tech/project/lite-runner
 [prs-welcome-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg
 [prs-welcome-link]: https://opensource.guide/how-to-contribute/
+[pypi-link]: https://pypi.org/project/lite-runner/
+[pypi-platforms-badge]: https://img.shields.io/pypi/pyversions/lite-runner
+[pypi-version-badge]: https://img.shields.io/pypi/v/lite-runner
 [template-badge]: https://img.shields.io/badge/%F0%9F%9A%80_Made_Using-tsvikas%2Fpython--template-gold
 [template-link]: https://github.com/tsvikas/python-template
 [tests-badge]: https://github.com/moonmath-ai/LiteRunner/actions/workflows/ci.yml/badge.svg
