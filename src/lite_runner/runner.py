@@ -6,6 +6,7 @@ import argparse
 import copy
 import datetime
 import hashlib
+import importlib.metadata
 import logging
 import os
 import shlex
@@ -41,6 +42,9 @@ from .backends import (
     prepare_extra_outputs,
 )
 from .params import (
+    _PARAM_TYPE_MAP,
+    _SKIP_INPUT,
+    UNSET,
     Metric,
     Output,
     Param,
@@ -312,7 +316,17 @@ class Runner:
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
                 param = self.params_by_name[name]
-                cast_val = param.cast_nargs(val) if param.nargs is not None else val
+                # Handle "-" as UNSET (mirrors interactive TUI skip)
+                if val == _SKIP_INPUT or (
+                    is_seq(val) and any(v == _SKIP_INPUT for v in val)
+                ):
+                    cast_val: object = UNSET
+                elif param.nargs is not None:
+                    cast_val = param.cast_nargs(val)
+                else:
+                    assert isinstance(param.type, str)  # noqa: S101
+                    caster = _PARAM_TYPE_MAP[param.type]
+                    cast_val = caster(val)
                 new.param_values[name] = cast_val
                 new.param_sources[name] = "cli"
 
@@ -423,6 +437,7 @@ class Runner:
         Returns a :class:`RunResult` with output_dir, exit_code, etc.
         """
         _ensure_logging()
+        logger.info("version %s", _get_version())
         r = self
         if not r.cli_parsed:
             r = r.parse_cli()
@@ -903,6 +918,11 @@ def warn_missing_input_paths(
                 continue
             if not Path(s).exists():
                 logger.warning("Input path does not exist: %s (param '%s')", s, p.name)
+
+
+def _get_version() -> str:
+    """Return the lite-runner version string."""
+    return importlib.metadata.version(PACKAGE_NAME)
 
 
 def _collect_git_info() -> dict[str, object]:

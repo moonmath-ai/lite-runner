@@ -1249,6 +1249,33 @@ def test_override_does_not_overwrite_on_parse_cli() -> None:
     assert r.param_sources["seed"] == "override"
 
 
+def test_parse_cli_dash_unsets_param() -> None:
+    """Passing '-' on CLI sets the param to UNSET."""
+    runner = _make_runner(params=[Param("prompt", default="hello")])
+    r = runner.parse_cli(["--prompt=-"])
+    assert r.param_values["prompt"] is UNSET
+    assert r.param_sources["prompt"] == "cli"
+
+
+def test_parse_cli_dash_unsets_nargs() -> None:
+    """Passing '-' in any nargs element sets the whole param to UNSET."""
+    runner = _make_runner(params=[Param("x", type=["str", "float"], labels=["a", "b"])])
+    r = runner.parse_cli(["--x", "-", "1.0"])
+    assert r.param_values["x"] is UNSET
+
+
+def test_parse_cli_dash_unset_skipped_in_command() -> None:
+    """UNSET param from CLI '-' is omitted from built command."""
+    runner = _make_runner(
+        params=[Param("seed", type="int", default=42), Param("prompt")]
+    )
+    r = runner.parse_cli(["--seed=-", "--prompt", "hello"])
+    r = r.resolve_defaults()
+    cmd = r.build_command(r.param_values)
+    assert "--seed" not in cmd
+    assert "--prompt" in cmd
+
+
 # ---------------------------------------------------------------------------
 # build_command edge cases
 # ---------------------------------------------------------------------------

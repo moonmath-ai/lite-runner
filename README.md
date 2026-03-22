@@ -53,6 +53,8 @@ chmod +x run.py
 ./run.py --prompt "a cat walking"           # interactive TUI fills missing params
 ./run.py --prompt "a cat" --no-interactive  # non-interactive, fail if missing
 ./run.py --prompt "a cat" --dry-run         # print command, don't run
+./run.py --seed=-                           # unset a param (omit from command)
+./run.py --image - - -                      # unset a multi-value param
 ```
 
 ## What it does
@@ -102,6 +104,9 @@ Param(
   - `"path"` — file path, no auto-upload
 - `log_when=` auto-inferred: `"before"` for inputs, `"after"` for `$output` paths
 - `type=[...]` gives per-element types for multi-value flags (nargs inferred from length)
+- Pass `-` on CLI to unset a param (omit it from the subprocess command).
+  For single-value: `--seed=-`. For multi-value: `--image - - -` (one `-` per element).
+  This mirrors typing `-` at the interactive TUI prompt.
 
 ## Output
 

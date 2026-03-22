@@ -198,8 +198,9 @@ class Param:
                     f"{self.help or ''} ({' '.join(self.labels)})"
                 ).strip()
         else:
-            assert isinstance(self.type, str)  # noqa: S101
-            kwargs["type"] = _PARAM_TYPE_MAP[self.type]
+            # Always accept str so that "-" (unset) passes through;
+            # the runner casts to the real type after checking for "-".
+            kwargs["type"] = str
         if self.choices:
             kwargs["choices"] = self.choices
         return kwargs
