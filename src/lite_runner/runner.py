@@ -41,6 +41,9 @@ from .backends import (
     prepare_extra_outputs,
 )
 from .params import (
+    _PARAM_TYPE_MAP,
+    _SKIP_INPUT,
+    UNSET,
     Metric,
     Output,
     Param,
@@ -312,7 +315,17 @@ class Runner:
         for name, val in parsed_params.items():
             if val is not None and new.param_sources.get(name) != "override":
                 param = self.params_by_name[name]
-                cast_val = param.cast_nargs(val) if param.nargs is not None else val
+                # Handle "-" as UNSET (mirrors interactive TUI skip)
+                if val == _SKIP_INPUT or (
+                    is_seq(val) and any(v == _SKIP_INPUT for v in val)
+                ):
+                    cast_val: object = UNSET
+                elif param.nargs is not None:
+                    cast_val = param.cast_nargs(val)
+                else:
+                    assert isinstance(param.type, str)  # noqa: S101
+                    caster = _PARAM_TYPE_MAP[param.type]
+                    cast_val = caster(val)
                 new.param_values[name] = cast_val
                 new.param_sources[name] = "cli"
 
