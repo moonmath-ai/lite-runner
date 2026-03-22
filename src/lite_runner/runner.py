@@ -588,7 +588,7 @@ class Runner:
             "Run started at %s",
             datetime.datetime.now(tz=datetime.timezone.utc)
             .astimezone()
-            .strftime("%H:%M:%S %Z"),
+            .strftime("%H:%M:%S %Z (%z)"),
         )
         if not flags.dry_run:
             exit_code, duration, stdout_text, stderr_text, aborted = r.execute(
