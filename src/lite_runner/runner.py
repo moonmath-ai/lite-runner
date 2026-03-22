@@ -6,6 +6,7 @@ import argparse
 import copy
 import datetime
 import hashlib
+import importlib.metadata
 import logging
 import os
 import shlex
@@ -436,6 +437,7 @@ class Runner:
         Returns a :class:`RunResult` with output_dir, exit_code, etc.
         """
         _ensure_logging()
+        logger.info("version %s", _get_version())
         r = self
         if not r.cli_parsed:
             r = r.parse_cli()
@@ -910,6 +912,11 @@ def warn_missing_input_paths(
                 continue
             if not Path(s).exists():
                 logger.warning("Input path does not exist: %s (param '%s')", s, p.name)
+
+
+def _get_version() -> str:
+    """Return the lite-runner version string."""
+    return importlib.metadata.version(PACKAGE_NAME)
 
 
 def _collect_git_info() -> dict[str, object]:
