@@ -584,11 +584,11 @@ class Runner:
         logger.info("Command:\n%s", shlex.join(cmd))
 
         # Execute
+        run_started_at = datetime.datetime.now(tz=datetime.timezone.utc)
         logger.info(
             "Run started at %s",
-            datetime.datetime.now(tz=datetime.timezone.utc)
-            .astimezone()
-            .strftime("%H:%M:%S %Z"),
+            run_started_at.astimezone().strftime("%H:%M:%S.%f")[:-3]
+            + run_started_at.astimezone().strftime(" %Z"),
         )
         if not flags.dry_run:
             exit_code, duration, stdout_text, stderr_text, aborted = r.execute(
@@ -615,6 +615,7 @@ class Runner:
             r.tags,
             aborted=aborted,
             dry_run=bool(flags.dry_run),
+            run_started_at=run_started_at,
         )
         result = RunResult(
             output_dir=output_dir,
@@ -646,6 +647,7 @@ class Runner:
         *,
         aborted: bool = False,
         dry_run: bool = False,
+        run_started_at: datetime.datetime | None = None,
     ) -> None:
         """Run post-execution steps (metrics, file uploads, code snapshot).
 
@@ -668,7 +670,11 @@ class Runner:
         # Collect metrics
         metrics = []
         try:
-            metrics = collect_metrics(self.metrics, stdout_text + "\n" + stderr_text)
+            metrics = collect_metrics(
+                self.metrics,
+                stdout_text + "\n" + stderr_text,
+                run_started_at=run_started_at,
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("extract metrics failed: %s", e)
 
