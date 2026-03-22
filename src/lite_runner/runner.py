@@ -424,7 +424,7 @@ class Runner:
         Returns a :class:`RunResult` with output_dir, exit_code, etc.
         """
         _ensure_logging()
-        logger.info("running version %s", _get_version())
+        logger.info("version %s", _get_version())
         r = self
         if not r.cli_parsed:
             r = r.parse_cli()
