@@ -131,9 +131,25 @@ Extract values from stdout:
 ```python
 Metric("loss", pattern=r"loss=([\d.]+)")
 Metric("status", pattern=r"status: (\w+)", type="str")
+Metric("elapsed", pattern=r"time=([\d:.]+)", type="timedelta")
+Metric("first_frame", pattern=r"frame_at=(.+)", type="time")
 ```
 
 Last match wins. Stored in `wandb.run.summary`.
+
+Types:
+
+| Type          | Input format                         | Stored as               |
+| ------------- | ------------------------------------ | ----------------------- |
+| `"float"`     | `3.14`                               | `float`                 |
+| `"int"`       | `42`                                 | `int`                   |
+| `"str"`       | any string                           | `str`                   |
+| `"timedelta"` | `[[HH:]MM:]SS[.fff]`                 | seconds (`float`)       |
+| `"time"`      | ISO datetime or `[[HH:]MM:]SS[.fff]` | seconds since run start |
+
+`"time"` accepts full ISO timestamps (`2026-01-01T12:01:30+00:00`), wall-clock
+times (`12:01:30.500`), or short forms (`05:30`, `42.75`), with an optional
+timezone suffix (`12:01:30.000 IDT`). Naive timestamps use local time.
 
 ## Sweeps
 

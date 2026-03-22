@@ -38,7 +38,8 @@ Four core abstractions:
 - **`Output`** — Declares output files not tied to a Param (glob patterns, directories, zips).
   Processed after subprocess completes.
 - **`Metric`** — Regex pattern applied to stdout; last match wins.
-  Stored in `wandb.run.summary`.
+  Stored in `wandb.run.summary`. Types: `float`, `int`, `str`, `timedelta`
+  (`[[HH:]MM:]SS[.fff]` → seconds), `time` (ISO or wall-clock → seconds since run start).
 - **`Runner`** — Orchestrator with an immutable pipeline API.
   Each pipeline method returns a new Runner via `copy.deepcopy`:
   `parse_cli()` → `override()` → `resolve_defaults()` → `ask_user()`.
