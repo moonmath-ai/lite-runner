@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import gzip
 import json
 import logging
@@ -305,6 +306,61 @@ def _parse_timedelta(raw: str) -> float:
     return seconds
 
 
+def _local_tz() -> datetime.tzinfo:
+    """Return the current local timezone."""
+    tz = datetime.datetime.now().astimezone().tzinfo
+    assert tz is not None  # noqa: S101
+    return tz
+
+
+def _parse_wall_time(raw: str, run_started_at: datetime.datetime) -> float:
+    r"""Parse a time string and return seconds since *run_started_at*.
+
+    Accepts ISO datetimes (``2026-01-01T12:01:30+00:00``) and wall-clock
+    times in ``[[HH:]MM:]SS[.fff][ TZ]`` format.  Naive timestamps are
+    interpreted as local time.
+
+    >>> from datetime import datetime, timezone
+    >>> t0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    >>> _parse_wall_time("2026-01-01T12:01:30+00:00", t0)
+    90.0
+    """
+    # Try full ISO datetime first.
+    try:
+        parsed = datetime.datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=_local_tz())
+        return (parsed - run_started_at).total_seconds()
+    except ValueError:
+        pass
+
+    # Strip optional trailing timezone abbreviation (e.g. " IDT", " UTC").
+    time_str = re.sub(r"\s+[A-Za-z][A-Za-z0-9/_+-]*$", "", raw.strip())
+
+    # Parse [[HH:]MM:]SS[.fff] into a time on run_started_at's date.
+    parts = time_str.split(":")
+    if len(parts) == 1:
+        sec = float(parts[0])
+        hour, minute = 0, 0
+    elif len(parts) == 2:  # noqa: PLR2004
+        minute, sec = int(parts[0]), float(parts[1])
+        hour = 0
+    else:
+        hour, minute, sec = int(parts[0]), int(parts[1]), float(parts[2])
+
+    whole_sec = int(sec)
+    micro = round((sec - whole_sec) * 1_000_000)
+    t = datetime.time(hour, minute, whole_sec, micro)
+
+    local = _local_tz()
+    parsed = datetime.datetime.combine(
+        run_started_at.astimezone(local).date(),
+        t,
+        tzinfo=local,
+    )
+    return (parsed - run_started_at).total_seconds()
+
+
 _METRIC_CASTERS: dict[str, Callable[[str], int | float]] = {
     "float": float,
     "int": int,
@@ -315,6 +371,8 @@ _METRIC_CASTERS: dict[str, Callable[[str], int | float]] = {
 def collect_metrics(
     metrics: list[Metric],
     output_text: str,
+    *,
+    run_started_at: datetime.datetime | None = None,
 ) -> list[tuple[str, object]]:
     """Extract metrics from subprocess output via regex.
 
@@ -327,7 +385,13 @@ def collect_metrics(
             continue
         raw = matches[-1]  # last match wins
         try:
-            val = _METRIC_CASTERS[m.type](raw)
+            if m.type == "time":
+                if run_started_at is None:
+                    msg = "Metric type 'time' requires run_started_at"
+                    raise ValueError(msg)  # noqa: TRY301
+                val: object = _parse_wall_time(raw, run_started_at)
+            else:
+                val = _METRIC_CASTERS[m.type](raw)
         except (KeyError, ValueError):
             val = raw
         items.append((m.name, val))

@@ -1,5 +1,6 @@
 """Tests for lite_runner.backends."""
 
+import datetime
 import json
 import zipfile
 from pathlib import Path
@@ -542,6 +543,145 @@ def test_metric_timedelta_seconds_only() -> None:
     metrics = [Metric("elapsed", pattern=r"time=([\d:.]+)", type="timedelta")]
     items = collect_metrics(metrics, "time=42.75")
     assert items == [("elapsed", 42.75)]
+
+
+# ---------------------------------------------------------------------------
+# Metric time type (timestamp → seconds since run start)
+# ---------------------------------------------------------------------------
+
+
+def _local_t0(
+    h: int = 12,
+    m: int = 0,
+    s: int = 0,
+) -> datetime.datetime:
+    """Build a run_started_at in local tz for deterministic tests."""
+    local_tz = datetime.datetime.now().astimezone().tzinfo
+    return datetime.datetime(2026, 1, 1, h, m, s, tzinfo=local_tz)
+
+
+def test_metric_time_iso() -> None:
+    """Full ISO datetime with explicit tz."""
+    t0 = datetime.datetime(
+        2026,
+        1,
+        1,
+        12,
+        0,
+        0,
+        tzinfo=datetime.timezone.utc,
+    )
+    metrics = [Metric("t", pattern=r"at=(\S+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=2026-01-01T12:01:30+00:00",
+        run_started_at=t0,
+    )
+    assert items == [("t", 90.0)]
+
+
+def test_metric_time_naive_iso() -> None:
+    """Naive ISO datetime is interpreted as local time."""
+    t0 = _local_t0()
+    metrics = [Metric("t", pattern=r"at=(\S+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=2026-01-01T12:00:45",
+        run_started_at=t0,
+    )
+    assert items == [("t", 45.0)]
+
+
+def test_metric_time_hms() -> None:
+    """Wall-clock HH:MM:SS."""
+    t0 = _local_t0()
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=12:01:30",
+        run_started_at=t0,
+    )
+    assert items == [("t", 90.0)]
+
+
+def test_metric_time_ms() -> None:
+    """Wall-clock MM:SS (no hours)."""
+    t0 = _local_t0(h=0)
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=05:30",
+        run_started_at=t0,
+    )
+    assert items == [("t", 330.0)]
+
+
+def test_metric_time_s() -> None:
+    """Wall-clock SS (seconds only)."""
+    t0 = _local_t0(h=0)
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=42",
+        run_started_at=t0,
+    )
+    assert items == [("t", 42.0)]
+
+
+def test_metric_time_hms_frac() -> None:
+    """Wall-clock HH:MM:SS.fff."""
+    t0 = _local_t0()
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=12:00:01.500",
+        run_started_at=t0,
+    )
+    assert items == [("t", 1.5)]
+
+
+def test_metric_time_ms_frac() -> None:
+    """Wall-clock MM:SS.fff (no hours)."""
+    t0 = _local_t0(h=0)
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=01:02.500",
+        run_started_at=t0,
+    )
+    assert items == [("t", 62.5)]
+
+
+def test_metric_time_s_frac() -> None:
+    """Wall-clock SS.fff (seconds with fractional)."""
+    t0 = _local_t0(h=0)
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        "at=42.750",
+        run_started_at=t0,
+    )
+    assert items == [("t", 42.75)]
+
+
+def test_metric_time_hms_with_tz() -> None:
+    """Wall-clock HH:MM:SS.fff with timezone abbreviation."""
+    t0 = _local_t0()
+    local_tz_name = t0.strftime("%Z")
+    metrics = [Metric("t", pattern=r"at=(.+)", type="time")]
+    items = collect_metrics(
+        metrics,
+        f"at=12:00:30.000 {local_tz_name}",
+        run_started_at=t0,
+    )
+    assert items == [("t", 30.0)]
+
+
+def test_metric_time_without_run_started_at_falls_back() -> None:
+    """type='time' without run_started_at stores raw string."""
+    metrics = [Metric("t", pattern=r"at=(\S+)", type="time")]
+    items = collect_metrics(metrics, "at=2026-01-01T12:00:00+00:00")
+    assert items == [("t", "2026-01-01T12:00:00+00:00")]
 
 
 # ---------------------------------------------------------------------------
